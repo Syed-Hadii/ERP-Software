@@ -11,7 +11,7 @@ const {
   refreshToken,
   logout,
   changePassword
-} = require('../controllers/UserController');
+} = require('../controllers/userController');
 const { protect, admin } = require('../middlewares/authMiddleware');
 
 userRouter.post('/change-password', protect, changePassword);
