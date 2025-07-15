@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Wrapper from "../../utils/wrapper";
-import DeleteModal from "../../Components/DeleteModal";
+import DeleteModal from "../../components/DeleteModal";
 import { BASE_URL } from "../../config/config";
 import { useNavigate } from "react-router-dom";
 
