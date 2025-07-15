@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import Wrapper from "../utils/wrapper";
-import MainLayout from "../components/Layout/Layout";
 
 const Welcome = () => {
   const [userInfo, setUserInfo] = useState({
