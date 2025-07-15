@@ -23,6 +23,6 @@ userRouter
   .put(protect, admin, updateUser)
   .delete(protect, admin, deleteUser);
 userRouter.post('/refresh-token', refreshToken);
-userRouter.post('/logout', protect, logout); 
+userRouter.post('/logout', protect, logout);
 
 module.exports = userRouter;
