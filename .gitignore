@@ -1,0 +1,11 @@
+# Ignore node_modules in both
+Frontend/node_modules/
+Backend/node_modules/
+
+# Build folder from React
+Frontend/build/
+
+# Env files
+.env
+Frontend/.env
+Backend/.env
