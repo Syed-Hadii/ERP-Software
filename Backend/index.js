@@ -22,7 +22,7 @@ const RequestRouter = require("./routes/Inventory/inventoryRequest.js");
 const purchaseInvoiceRouter = require("./routes/Inventory/PurchaseInvoice.js");
 const notificationRouter = require("./routes/notificationRoute.js");
 const agricultureNotificationRouter = require("./routes/Agriculture/agricultureNotificationRoute.js");
-const {setupNotificationScheduler} = require("./utils/notificationScheduler.js");
+const { setupNotificationScheduler } = require("./utils/notificationScheduler.js");
 const inventoryNotificationRouter = require("./routes/Inventory/inventoryNotificationRoutes");
 const hrNotificationRouter = require("./routes/HR/hrNotificationRoute.js");
 const financeNotificationRouter = require("./routes/Finance/financeNotificationRoute.js");
@@ -65,7 +65,7 @@ const port = process.env.PORT || 3002;
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(cors());
+app.use(cors({ origin: "*" }));
 
 // Connect to MongoDB
 (async () => {
