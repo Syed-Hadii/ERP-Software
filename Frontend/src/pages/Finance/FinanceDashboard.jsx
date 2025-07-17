@@ -139,7 +139,7 @@ const FinanceDashboard = () => {
       {
         label: "Financial Metrics (PKR)",
         data: [
-          dashboardData?.summary.totalAssets || 0,
+          dashboardData?.summary?.totalAssets || 0,
           dashboardData?.summary.totalLiabilities || 0,
           dashboardData?.summary.totalEquity || 0,
           dashboardData?.summary.netIncome || 0,
@@ -277,7 +277,7 @@ const FinanceDashboard = () => {
           : [
               {
                 label: "Total Assets",
-                value: dashboardData?.summary.totalAssets || 0,
+                value: dashboardData?.summary?.totalAssets || 0,
                 icon: <AccountBalance />,
               },
               {
