@@ -61,12 +61,12 @@ const generateLowStockNotifications = async (req, res) => {
 
 const generateRequestNotifications = async (req, res) => {
     try {
-        const requests = await Inventory_Request.find({ status: 'pending' }).populate('item requestedBy');
+        const requests = await Inventory_Request.find({ status: 'pending' }).populate('item requestorType');
         let count = 0;
 
         for (const request of requests) {
-            if (!request.item || !request.requestedBy) {
-                console.warn(`Skipping request ${request._id}: Missing item or requestedBy`);
+            if (!request.item || !request.requestorType) {
+                console.warn(`Skipping request ${request._id}: Missing item or requestorType`);
                 continue;
             }
 
@@ -106,12 +106,12 @@ const generateRequestNotifications = async (req, res) => {
 
 const generateInventoryRequestResponseNotifications = async (req, res) => {
     try {
-        const requests = await Inventory_Request.find({ status: { $ne: 'pending' } }).populate('item requestedBy');
+        const requests = await Inventory_Request.find({ status: { $ne: 'pending' } }).populate('item requestorType');
         let count = 0;
 
         for (const request of requests) {
-            if (!request.item || !request.requestedBy) {
-                console.warn(`Skipping request ${request._id}: Missing item or requestedBy`);
+            if (!request.item || !request.requestorType) {
+                console.warn(`Skipping request ${request._id}: Missing item or requestorType`);
                 continue;
             }
 
@@ -131,7 +131,7 @@ const generateInventoryRequestResponseNotifications = async (req, res) => {
                     entityModel: 'Inventory_Request',
                     dueDate: new Date(),
                     priority: 'medium',
-                    recipients: [request.requestedBy._id],
+                    recipients: [request.requestorType],
                     roles: [request.requestorType, 'Inventory Manager', 'Admin']
                 });
                 await newNotification.save();
