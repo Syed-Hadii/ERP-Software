@@ -9,7 +9,7 @@ const Supplier = require("../../models/Inventory/supplierModel");
 const Inventory = require("../../models/Inventory/inventory");
 const DairyInventory = require("../../models/Cattle/dairyInventory");
 const AgroInventory = require("../../models/Agriculture/agroInventory");
-const PurchaseInvoice = require("../../models/Inventory/purchaseInvoice");
+const PurchaseInvoice = require("../../models/Inventory/PurchaseInvoice");
 const DairySales = require("../../models/Cattle/dairySales");
 
 // Helper function to calculate group totals
