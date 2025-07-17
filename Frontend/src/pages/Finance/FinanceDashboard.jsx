@@ -36,9 +36,43 @@ ChartJS.register(
   Legend
 );
 
+// Default dashboard data structure
+const defaultDashboardData = {
+  summary: {
+    totalAssets: 0,
+    totalLiabilities: 0,
+    totalEquity: 0,
+    netIncome: 0,
+    totalBankBalance: 0,
+    totalCashFlow: 0,
+  },
+  categoryBreakdown: [],
+  topInventoryItems: [],
+  recentTransactions: [],
+  recentWriteOffs: [],
+  inventorySummary: {
+    totalItems: 0,
+    totalQty: 0,
+    totalValue: 0,
+  },
+  customerSummary: {
+    totalCustomers: 0,
+    totalBalance: 0,
+  },
+  supplierSummary: {
+    totalSuppliers: 0,
+    totalBalance: 0,
+  },
+  currentPeriod: {
+    status: "No period",
+    startDate: null,
+    endDate: null,
+  },
+};
+
 const FinanceDashboard = () => {
   const navigate = useNavigate();
-  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardData, setDashboardData] = useState(defaultDashboardData);
   const [transactionDetails, setTransactionDetails] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [closingModalOpen, setClosingModalOpen] = useState(false);
@@ -57,16 +91,42 @@ const FinanceDashboard = () => {
         `${BASE_URL}/finance-dashboard/dashboard`
       );
       if (response.data.success) {
-        setDashboardData(response.data.data);
+        // Merge API data with default structure to ensure all fields exist
+        setDashboardData({
+          ...defaultDashboardData,
+          ...response.data.data,
+          summary: {
+            ...defaultDashboardData.summary,
+            ...(response.data.data.summary || {}),
+          },
+          inventorySummary: {
+            ...defaultDashboardData.inventorySummary,
+            ...(response.data.data.inventorySummary || {}),
+          },
+          customerSummary: {
+            ...defaultDashboardData.customerSummary,
+            ...(response.data.data.customerSummary || {}),
+          },
+          supplierSummary: {
+            ...defaultDashboardData.supplierSummary,
+            ...(response.data.data.supplierSummary || {}),
+          },
+          currentPeriod: {
+            ...defaultDashboardData.currentPeriod,
+            ...(response.data.data.currentPeriod || {}),
+          },
+        });
       } else {
         Wrapper.toast.error(
           response.data.message || "Failed to fetch dashboard data"
         );
+        setDashboardData(defaultDashboardData); // Fallback to default data
       }
     } catch (err) {
       console.error("Error fetching dashboard data:", err);
       Wrapper.toast.error("Failed to fetch dashboard data");
       setError(err.message);
+      setDashboardData(defaultDashboardData); // Fallback to default data
     } finally {
       setLoading(false);
     }
@@ -79,7 +139,7 @@ const FinanceDashboard = () => {
         `${BASE_URL}/finance-dashboard/transaction/${id}`
       );
       if (response.data.success) {
-        setTransactionDetails(response.data.data);
+        setTransactionDetails(response.data.data || {});
         setModalOpen(true);
       } else {
         Wrapper.toast.error(
@@ -139,12 +199,12 @@ const FinanceDashboard = () => {
       {
         label: "Financial Metrics (PKR)",
         data: [
-          dashboardData?.summary?.totalAssets || 0,
-          dashboardData?.summary.totalLiabilities || 0,
-          dashboardData?.summary.totalEquity || 0,
-          dashboardData?.summary.netIncome || 0,
-          dashboardData?.summary.totalBankBalance || 0,
-          dashboardData?.summary.totalCashFlow || 0,
+          dashboardData.summary.totalAssets,
+          dashboardData.summary.totalLiabilities,
+          dashboardData.summary.totalEquity,
+          dashboardData.summary.netIncome,
+          dashboardData.summary.totalBankBalance,
+          dashboardData.summary.totalCashFlow,
         ],
         backgroundColor: "rgba(34, 197, 94, 0.6)",
         borderColor: "rgba(34, 197, 94, 1)",
@@ -171,11 +231,11 @@ const FinanceDashboard = () => {
 
   // Category Breakdown Chart Data
   const categoryChartData = {
-    labels: dashboardData?.categoryBreakdown?.map((cat) => cat.category) || [],
+    labels: dashboardData.categoryBreakdown.map((cat) => cat.category) || [],
     datasets: [
       {
         label: "Balance by Category (PKR)",
-        data: dashboardData?.categoryBreakdown?.map((cat) => cat.total) || [],
+        data: dashboardData.categoryBreakdown.map((cat) => cat.total) || [],
         backgroundColor: "rgba(59, 130, 246, 0.6)",
         borderColor: "rgba(59, 130, 246, 1)",
         borderWidth: 1,
@@ -201,12 +261,12 @@ const FinanceDashboard = () => {
 
   // Top Inventory Items Chart Data
   const inventoryChartData = {
-    labels: dashboardData?.topInventoryItems?.map((item) => item.name) || [],
+    labels: dashboardData.topInventoryItems.map((item) => item.name) || [],
     datasets: [
       {
         label: "Inventory Value (PKR)",
         data:
-          dashboardData?.topInventoryItems?.map((item) => item.totalCost) || [],
+          dashboardData.topInventoryItems.map((item) => item.totalCost) || [],
         borderColor: "rgba(236, 72, 153, 1)",
         backgroundColor: "rgba(236, 72, 153, 0.2)",
         fill: true,
@@ -262,6 +322,13 @@ const FinanceDashboard = () => {
         </Wrapper.Button>
       </Wrapper.Box>
 
+      {/* Error Message */}
+      {error && (
+        <Wrapper.Alert severity="error" sx={{ mb: 4 }}>
+          {error}
+        </Wrapper.Alert>
+      )}
+
       {/* Financial Summary */}
       <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
         {loading
@@ -277,32 +344,32 @@ const FinanceDashboard = () => {
           : [
               {
                 label: "Total Assets",
-                value: dashboardData?.summary?.totalAssets || 0,
+                value: dashboardData.summary.totalAssets,
                 icon: <AccountBalance />,
               },
               {
                 label: "Total Liabilities",
-                value: dashboardData?.summary.totalLiabilities || 0,
+                value: dashboardData.summary.totalLiabilities,
                 icon: <AccountBalance />,
               },
               {
                 label: "Total Equity",
-                value: dashboardData?.summary.totalEquity || 0,
+                value: dashboardData.summary.totalEquity,
                 icon: <AccountBalance />,
               },
               {
                 label: "Net Income",
-                value: dashboardData?.summary.netIncome || 0,
+                value: dashboardData.summary.netIncome,
                 icon: <AccountBalance />,
               },
               {
                 label: "Bank Balance",
-                value: dashboardData?.summary.totalBankBalance || 0,
+                value: dashboardData.summary.totalBankBalance,
                 icon: <AccountBalance />,
               },
               {
                 label: "Cash Flow",
-                value: dashboardData?.summary.totalCashFlow || 0,
+                value: dashboardData.summary.totalCashFlow,
                 icon: <AccountBalance />,
               },
             ].map((item, index) => (
@@ -335,194 +402,175 @@ const FinanceDashboard = () => {
       </Wrapper.Grid>
 
       {/* Charts Section */}
-      <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
-        {/* Financial Overview Chart */}
-        <Wrapper.Grid item xs={12} lg={6}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Typography
-              variant="h6"
-              sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
-            >
-              Financial Overview
-            </Wrapper.Typography>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={256} />
-            ) : (
-              <Bar data={financialChartData} options={financialChartOptions} />
-            )}
-          </Wrapper.Paper>
-        </Wrapper.Grid>
-
-        {/* Category Breakdown Chart */}
-        <Wrapper.Grid item xs={12} lg={6}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Typography
-              variant="h6"
-              sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
-            >
-              Category Breakdown
-            </Wrapper.Typography>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={256} />
-            ) : (
-              <Bar data={categoryChartData} options={categoryChartOptions} />
-            )}
-          </Wrapper.Paper>
-        </Wrapper.Grid>
-      </Wrapper.Grid>
-
-      {/* Inventory and Party Summary */}
-      <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
-        {/* Inventory Summary */}
-        <Wrapper.Grid item xs={12} lg={4}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <Inventory sx={{ mr: 1 }} />
+      {!loading && (
+        <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Financial Overview Chart */}
+          <Wrapper.Grid item xs={12} lg={6}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
               <Wrapper.Typography
                 variant="h6"
-                sx={{ fontWeight: "bold", color: "grey.800" }}
+                sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
               >
-                Inventory Summary
+                Financial Overview
               </Wrapper.Typography>
-            </Wrapper.Box>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={80} />
-            ) : (
+              <Bar data={financialChartData} options={financialChartOptions} />
+            </Wrapper.Paper>
+          </Wrapper.Grid>
+
+          {/* Category Breakdown Chart */}
+          <Wrapper.Grid item xs={12} lg={6}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Typography
+                variant="h6"
+                sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
+              >
+                Category Breakdown
+              </Wrapper.Typography>
+              <Bar data={categoryChartData} options={categoryChartOptions} />
+            </Wrapper.Paper>
+          </Wrapper.Grid>
+        </Wrapper.Grid>
+      )}
+
+      {/* Inventory and Party Summary */}
+      {!loading && (
+        <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Inventory Summary */}
+          <Wrapper.Grid item xs={12} lg={4}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Box
+                sx={{ display: "flex", alignItems: "center", mb: 2 }}
+              >
+                <Inventory sx={{ mr: 1 }} />
+                <Wrapper.Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "grey.800" }}
+                >
+                  Inventory Summary
+                </Wrapper.Typography>
+              </Wrapper.Box>
               <Wrapper.Box
                 sx={{ display: "flex", flexDirection: "column", gap: 1 }}
               >
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Items:{" "}
-                  <strong>
-                    {dashboardData?.inventorySummary.totalItems || 0}
-                  </strong>
+                  <strong>{dashboardData.inventorySummary.totalItems}</strong>
                 </Wrapper.Typography>
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Quantity:{" "}
-                  <strong>
-                    {dashboardData?.inventorySummary.totalQty || 0}
-                  </strong>
+                  <strong>{dashboardData.inventorySummary.totalQty}</strong>
                 </Wrapper.Typography>
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Value:{" "}
                   <strong>
                     PKR{" "}
-                    {dashboardData?.inventorySummary.totalValue.toLocaleString() ||
-                      0}
+                    {dashboardData.inventorySummary.totalValue.toLocaleString()}
                   </strong>
                 </Wrapper.Typography>
               </Wrapper.Box>
-            )}
-          </Wrapper.Paper>
-        </Wrapper.Grid>
+            </Wrapper.Paper>
+          </Wrapper.Grid>
 
-        {/* Customer Summary */}
-        <Wrapper.Grid item xs={12} lg={4}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <People sx={{ mr: 1 }} />
-              <Wrapper.Typography
-                variant="h6"
-                sx={{ fontWeight: "bold", color: "grey.800" }}
+          {/* Customer Summary */}
+          <Wrapper.Grid item xs={12} lg={4}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Box
+                sx={{ display: "flex", alignItems: "center", mb: 2 }}
               >
-                Customer Summary
-              </Wrapper.Typography>
-            </Wrapper.Box>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={80} />
-            ) : (
+                <People sx={{ mr: 1 }} />
+                <Wrapper.Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "grey.800" }}
+                >
+                  Customer Summary
+                </Wrapper.Typography>
+              </Wrapper.Box>
               <Wrapper.Box
                 sx={{ display: "flex", flexDirection: "column", gap: 1 }}
               >
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Customers:{" "}
                   <strong>
-                    {dashboardData?.customerSummary.totalCustomers || 0}
+                    {dashboardData.customerSummary.totalCustomers}
                   </strong>
                 </Wrapper.Typography>
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Receivables:{" "}
                   <strong>
                     PKR{" "}
-                    {dashboardData?.customerSummary.totalBalance.toLocaleString() ||
-                      0}
+                    {dashboardData.customerSummary.totalBalance.toLocaleString()}
                   </strong>
                 </Wrapper.Typography>
               </Wrapper.Box>
-            )}
-          </Wrapper.Paper>
-        </Wrapper.Grid>
+            </Wrapper.Paper>
+          </Wrapper.Grid>
 
-        {/* Supplier Summary */}
-        <Wrapper.Grid item xs={12} lg={4}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <Store sx={{ mr: 1 }} />
-              <Wrapper.Typography
-                variant="h6"
-                sx={{ fontWeight: "bold", color: "grey.800" }}
+          {/* Supplier Summary */}
+          <Wrapper.Grid item xs={12} lg={4}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Box
+                sx={{ display: "flex", alignItems: "center", mb: 2 }}
               >
-                Supplier Summary
-              </Wrapper.Typography>
-            </Wrapper.Box>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={80} />
-            ) : (
+                <Store sx={{ mr: 1 }} />
+                <Wrapper.Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "grey.800" }}
+                >
+                  Supplier Summary
+                </Wrapper.Typography>
+              </Wrapper.Box>
               <Wrapper.Box
                 sx={{ display: "flex", flexDirection: "column", gap: 1 }}
               >
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Suppliers:{" "}
                   <strong>
-                    {dashboardData?.supplierSummary.totalSuppliers || 0}
+                    {dashboardData.supplierSummary.totalSuppliers}
                   </strong>
                 </Wrapper.Typography>
                 <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                   Total Payables:{" "}
                   <strong>
                     PKR{" "}
-                    {dashboardData?.supplierSummary.totalBalance.toLocaleString() ||
-                      0}
+                    {dashboardData.supplierSummary.totalBalance.toLocaleString()}
                   </strong>
                 </Wrapper.Typography>
               </Wrapper.Box>
-            )}
-          </Wrapper.Paper>
+            </Wrapper.Paper>
+          </Wrapper.Grid>
         </Wrapper.Grid>
-      </Wrapper.Grid>
+      )}
 
       {/* Top Inventory Items Chart */}
-      <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, mb: 4, p: 2 }}>
-        <Wrapper.Typography
-          variant="h6"
-          sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
-        >
-          Top Inventory Items
-        </Wrapper.Typography>
-        {loading ? (
-          <Wrapper.Skeleton variant="rectangular" height={256} />
-        ) : (
+      {!loading && (
+        <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, mb: 4, p: 2 }}>
+          <Wrapper.Typography
+            variant="h6"
+            sx={{ fontWeight: "bold", color: "grey.800", mb: 2 }}
+          >
+            Top Inventory Items
+          </Wrapper.Typography>
           <Line data={inventoryChartData} options={inventoryChartOptions} />
-        )}
-      </Wrapper.Paper>
+        </Wrapper.Paper>
+      )}
 
       {/* Recent Transactions and Write-Offs */}
-      <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
-        {/* Recent Transactions */}
-        <Wrapper.Grid item xs={12} lg={6}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <ListAlt sx={{ mr: 1 }} />
-              <Wrapper.Typography
-                variant="h6"
-                sx={{ fontWeight: "bold", color: "grey.800" }}
+      {!loading && (
+        <Wrapper.Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Recent Transactions */}
+          <Wrapper.Grid item xs={12} lg={6}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Box
+                sx={{ display: "flex", alignItems: "center", mb: 2 }}
               >
-                Recent Transactions
-              </Wrapper.Typography>
-            </Wrapper.Box>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={192} />
-            ) : (
+                <ListAlt sx={{ mr: 1 }} />
+                <Wrapper.Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "grey.800" }}
+                >
+                  Recent Transactions
+                </Wrapper.Typography>
+              </Wrapper.Box>
               <Wrapper.TableContainer component={Wrapper.Paper}>
                 <Wrapper.Table>
                   <Wrapper.TableHead>
@@ -586,7 +634,7 @@ const FinanceDashboard = () => {
                     </Wrapper.TableRow>
                   </Wrapper.TableHead>
                   <Wrapper.TableBody>
-                    {dashboardData?.recentTransactions?.length > 0 ? (
+                    {dashboardData.recentTransactions.length > 0 ? (
                       dashboardData.recentTransactions.map((tx, index) => (
                         <Wrapper.TableRow
                           key={index}
@@ -600,18 +648,22 @@ const FinanceDashboard = () => {
                           <Wrapper.TableCell>
                             {new Date(tx.date).toLocaleDateString()}
                           </Wrapper.TableCell>
-                          <Wrapper.TableCell>{tx.type}</Wrapper.TableCell>
-                          <Wrapper.TableCell>{tx.reference}</Wrapper.TableCell>
                           <Wrapper.TableCell>
-                            {tx.description}
+                            {tx.type || "N/A"}
+                          </Wrapper.TableCell>
+                          <Wrapper.TableCell>
+                            {tx.reference || "N/A"}
+                          </Wrapper.TableCell>
+                          <Wrapper.TableCell>
+                            {tx.description || "N/A"}
                           </Wrapper.TableCell>
                           <Wrapper.TableCell
                             sx={{ textAlign: "right", color: "success.main" }}
                           >
-                            PKR {tx.amount.toLocaleString()}
+                            PKR {(tx.amount || 0).toLocaleString()}
                           </Wrapper.TableCell>
                           <Wrapper.TableCell sx={{ textAlign: "right" }}>
-                            {tx.status}
+                            {tx.status || "N/A"}
                           </Wrapper.TableCell>
                         </Wrapper.TableRow>
                       ))
@@ -628,25 +680,23 @@ const FinanceDashboard = () => {
                   </Wrapper.TableBody>
                 </Wrapper.Table>
               </Wrapper.TableContainer>
-            )}
-          </Wrapper.Paper>
-        </Wrapper.Grid>
+            </Wrapper.Paper>
+          </Wrapper.Grid>
 
-        {/* Recent Inventory Write-Offs */}
-        <Wrapper.Grid item xs={12} lg={6}>
-          <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
-            <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <Delete sx={{ mr: 1 }} />
-              <Wrapper.Typography
-                variant="h6"
-                sx={{ fontWeight: "bold", color: "grey.800" }}
+          {/* Recent Inventory Write-Offs */}
+          <Wrapper.Grid item xs={12} lg={6}>
+            <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, p: 2 }}>
+              <Wrapper.Box
+                sx={{ display: "flex", alignItems: "center", mb: 2 }}
               >
-                Recent Inventory Write-Offs
-              </Wrapper.Typography>
-            </Wrapper.Box>
-            {loading ? (
-              <Wrapper.Skeleton variant="rectangular" height={192} />
-            ) : (
+                <Delete sx={{ mr: 1 }} />
+                <Wrapper.Typography
+                  variant="h6"
+                  sx={{ fontWeight: "bold", color: "grey.800" }}
+                >
+                  Recent Inventory Write-Offs
+                </Wrapper.Typography>
+              </Wrapper.Box>
               <Wrapper.TableContainer component={Wrapper.Paper}>
                 <Wrapper.Table>
                   <Wrapper.TableHead>
@@ -691,9 +741,9 @@ const FinanceDashboard = () => {
                     </Wrapper.TableRow>
                   </Wrapper.TableHead>
                   <Wrapper.TableBody>
-                    {dashboardData?.recentWriteOffs?.length > 0 ? (
+                    {dashboardData.recentWriteOffs.length > 0 ? (
                       dashboardData.recentWriteOffs.flatMap((wo, index) =>
-                        wo.items.map((item, i) => (
+                        (wo.items || []).map((item, i) => (
                           <Wrapper.TableRow
                             key={`${index}-${i}`}
                             sx={{ "&:hover": { bgcolor: "grey.50" } }}
@@ -702,13 +752,14 @@ const FinanceDashboard = () => {
                               {new Date(wo.date).toLocaleDateString()}
                             </Wrapper.TableCell>
                             <Wrapper.TableCell>
-                              {wo.reference}
+                              {wo.reference || "N/A"}
                             </Wrapper.TableCell>
                             <Wrapper.TableCell>
-                              {item.itemName} ({item.itemCode})
+                              {item.itemName || "N/A"} ({item.itemCode || "N/A"}
+                              )
                             </Wrapper.TableCell>
                             <Wrapper.TableCell sx={{ textAlign: "right" }}>
-                              {item.quantity}
+                              {item.quantity || 0}
                             </Wrapper.TableCell>
                           </Wrapper.TableRow>
                         ))
@@ -726,33 +777,28 @@ const FinanceDashboard = () => {
                   </Wrapper.TableBody>
                 </Wrapper.Table>
               </Wrapper.TableContainer>
-            )}
-          </Wrapper.Paper>
+            </Wrapper.Paper>
+          </Wrapper.Grid>
         </Wrapper.Grid>
-      </Wrapper.Grid>
+      )}
 
       {/* Current Period */}
-      <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, mb: 4, p: 2 }}>
-        <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <CalendarToday sx={{ mr: 1 }} />
-          <Wrapper.Typography
-            variant="h6"
-            sx={{ fontWeight: "bold", color: "grey.800" }}
-          >
-            Current Period
-          </Wrapper.Typography>
-        </Wrapper.Box>
-        {loading ? (
-          <Wrapper.Skeleton variant="rectangular" height={64} />
-        ) : (
+      {!loading && (
+        <Wrapper.Paper sx={{ bgcolor: "white", boxShadow: 3, mb: 4, p: 2 }}>
+          <Wrapper.Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <CalendarToday sx={{ mr: 1 }} />
+            <Wrapper.Typography
+              variant="h6"
+              sx={{ fontWeight: "bold", color: "grey.800" }}
+            >
+              Current Period
+            </Wrapper.Typography>
+          </Wrapper.Box>
           <Wrapper.Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              Status:{" "}
-              <strong>
-                {dashboardData?.currentPeriod.status || "No period"}
-              </strong>
+              Status: <strong>{dashboardData.currentPeriod.status}</strong>
             </Wrapper.Typography>
-            {dashboardData?.currentPeriod.startDate && (
+            {dashboardData.currentPeriod.startDate && (
               <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                 Start:{" "}
                 <strong>
@@ -762,7 +808,7 @@ const FinanceDashboard = () => {
                 </strong>
               </Wrapper.Typography>
             )}
-            {dashboardData?.currentPeriod.endDate && (
+            {dashboardData.currentPeriod.endDate && (
               <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                 End:{" "}
                 <strong>
@@ -773,8 +819,8 @@ const FinanceDashboard = () => {
               </Wrapper.Typography>
             )}
           </Wrapper.Box>
-        )}
-      </Wrapper.Paper>
+        </Wrapper.Paper>
+      )}
 
       {/* Transaction Details Modal */}
       <Wrapper.Modal open={modalOpen} onClose={() => setModalOpen(false)}>
@@ -805,16 +851,20 @@ const FinanceDashboard = () => {
           >
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
               <strong>Date:</strong>{" "}
-              {new Date(transactionDetails?.date).toLocaleDateString()}
+              {transactionDetails
+                ? new Date(transactionDetails.date).toLocaleDateString()
+                : "N/A"}
             </Wrapper.Typography>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              <strong>Type:</strong> {transactionDetails?.type}
+              <strong>Type:</strong> {transactionDetails?.type || "N/A"}
             </Wrapper.Typography>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              <strong>Reference:</strong> {transactionDetails?.reference}
+              <strong>Reference:</strong>{" "}
+              {transactionDetails?.reference || "N/A"}
             </Wrapper.Typography>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              <strong>Description:</strong> {transactionDetails?.description}
+              <strong>Description:</strong>{" "}
+              {transactionDetails?.description || "N/A"}
             </Wrapper.Typography>
             {transactionDetails?.paymentMethod && (
               <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
@@ -825,24 +875,25 @@ const FinanceDashboard = () => {
             {transactionDetails?.bankAccount && (
               <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
                 <strong>Bank Account:</strong>{" "}
-                {transactionDetails.bankAccount.bankName} (
-                {transactionDetails.bankAccount.accountNumber})
+                {transactionDetails.bankAccount.bankName || "N/A"} (
+                {transactionDetails.bankAccount.accountNumber || "N/A"})
               </Wrapper.Typography>
             )}
             {transactionDetails?.cashAccount && (
               <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-                <strong>Cash Account:</strong> {transactionDetails.cashAccount}
+                <strong>Cash Account:</strong>{" "}
+                {transactionDetails.cashAccount || "N/A"}
               </Wrapper.Typography>
             )}
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              <strong>Party:</strong> {transactionDetails?.party}
+              <strong>Party:</strong> {transactionDetails?.party || "N/A"}
             </Wrapper.Typography>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
               <strong>Total Amount:</strong> PKR{" "}
-              {transactionDetails?.totalAmount.toLocaleString()}
+              {(transactionDetails?.totalAmount || 0).toLocaleString()}
             </Wrapper.Typography>
             <Wrapper.Typography variant="body2" sx={{ color: "grey.600" }}>
-              <strong>Status:</strong> {transactionDetails?.status}
+              <strong>Status:</strong> {transactionDetails?.status || "N/A"}
             </Wrapper.Typography>
             {transactionDetails?.accounts?.length > 0 && (
               <>
@@ -897,10 +948,10 @@ const FinanceDashboard = () => {
                       </Wrapper.TableRow>
                     </Wrapper.TableHead>
                     <Wrapper.TableBody>
-                      {transactionDetails.accounts.map((acc, index) => (
+                      {(transactionDetails.accounts || []).map((acc, index) => (
                         <Wrapper.TableRow key={index}>
                           <Wrapper.TableCell>
-                            {acc.accountName}
+                            {acc.accountName || "N/A"}
                           </Wrapper.TableCell>
                           <Wrapper.TableCell
                             sx={{ textAlign: "right", color: "success.main" }}
@@ -916,7 +967,9 @@ const FinanceDashboard = () => {
                               ? `PKR ${acc.credit.toLocaleString()}`
                               : "-"}
                           </Wrapper.TableCell>
-                          <Wrapper.TableCell>{acc.narration}</Wrapper.TableCell>
+                          <Wrapper.TableCell>
+                            {acc.narration || "N/A"}
+                          </Wrapper.TableCell>
                         </Wrapper.TableRow>
                       ))}
                     </Wrapper.TableBody>
@@ -978,16 +1031,16 @@ const FinanceDashboard = () => {
                       </Wrapper.TableRow>
                     </Wrapper.TableHead>
                     <Wrapper.TableBody>
-                      {transactionDetails.items.map((item, index) => (
+                      {(transactionDetails.items || []).map((item, index) => (
                         <Wrapper.TableRow key={index}>
                           <Wrapper.TableCell>
-                            {item.itemName} ({item.itemCode})
+                            {item.itemName || "N/A"} ({item.itemCode || "N/A"})
                           </Wrapper.TableCell>
                           <Wrapper.TableCell sx={{ textAlign: "right" }}>
-                            {item.quantity}
+                            {item.quantity || 0}
                           </Wrapper.TableCell>
                           <Wrapper.TableCell sx={{ textAlign: "right" }}>
-                            PKR {item.unitPrice.toLocaleString()}
+                            PKR {(item.unitPrice || 0).toLocaleString()}
                           </Wrapper.TableCell>
                           <Wrapper.TableCell sx={{ textAlign: "right" }}>
                             {item.discount ? `${item.discount}%` : "-"}
