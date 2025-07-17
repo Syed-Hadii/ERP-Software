@@ -513,8 +513,23 @@ const App = () => {
               </ProtectedRoute>
             }
           />
-          <Route path="/batch-entry" element={<BatchVoucherListPage />} />
-          <Route path="/batch-entry/form" element={<BatchEntryForm />} />
+          <Route
+            path="/batch-entry"
+            element={
+              <ProtectedRoute roles={["Admin", "Finance Manager"]}>
+                {" "}
+                <BatchVoucherListPage />{" "}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/batch-entry/form"
+            element={
+              <ProtectedRoute roles={["Admin", "Finance Manager"]}>
+                <BatchEntryForm />
+              </ProtectedRoute>
+            }
+          />
           {/* Catch-all for invalid routes */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
