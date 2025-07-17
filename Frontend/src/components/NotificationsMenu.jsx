@@ -87,37 +87,39 @@ const NotificationsMenu = () => {
   // Calculate dynamic maxHeight based on viewport height
   const maxMenuHeight = useMemo(() => {
     const viewportHeight = window.innerHeight;
-    const calculatedHeight = Math.min(viewportHeight * 0.9, 600);
-    // console.log(
-    //   "Viewport height:",
-    //   window.innerHeight,
-    //   "Max menu height:",
-    //   calculatedHeight
-    // );
-    return calculatedHeight;
+    return Math.min(viewportHeight * 0.9, 600);
   }, []);
 
   // Log notifications state for debugging
   useEffect(() => {
-    // console.log("Notifications state:", {
-    //   notifications,
-    //   unreadCount,
-    //   activeTab,
-    //   isLoading,
-    //   error,
-    // });
+    console.log("Notifications state:", {
+      notifications,
+      unreadCount,
+      activeTab,
+      isLoading,
+      error,
+    });
   }, [notifications, unreadCount, activeTab, isLoading, error]);
+
+  const tabDomains = [
+    "all",
+    "agriculture",
+    "cattle",
+    "inventory",
+    "hr",
+    "finance",
+  ];
 
   // Refresh notifications when menu opens or tab changes
   useEffect(() => {
     if (anchorEl) {
       setPage(1);
       setHasMore(true);
-      refreshNotifications(1).then((response) => {
-        // console.log("Initial refresh response:", response);
+      refreshNotifications(1, false, tabDomains[activeTab]).then((response) => {
+        console.log("Initial refresh response:", response);
       });
     }
-  }, [anchorEl, refreshNotifications]);
+  }, [anchorEl, activeTab, refreshNotifications]);
 
   // Show snackbar when notification status changes
   useEffect(() => {
@@ -136,7 +138,7 @@ const NotificationsMenu = () => {
           setIsLoadingMore(true);
           refreshNotifications(page + 1)
             .then((response) => {
-              // console.log("Infinite scroll response:", response);
+              console.log("Infinite scroll response:", response);
               if (!response?.success || response?.data?.length < 50) {
                 setHasMore(false);
               }
@@ -178,8 +180,8 @@ const NotificationsMenu = () => {
   const handleRefresh = () => {
     setPage(1);
     setHasMore(true);
-    refreshNotifications(1).then((response) => {
-      // console.log("Refresh response:", response);
+    refreshNotifications(1, false, tabDomains[activeTab]).then((response) => {
+      console.log("Refresh response:", response);
     });
   };
 
@@ -195,8 +197,8 @@ const NotificationsMenu = () => {
     setActiveTab(newValue);
     setPage(1);
     setHasMore(true);
-    refreshNotifications(1).then((response) => {
-      // console.log(`Tab ${newValue} refresh response:`, response);
+    refreshNotifications(1, false, tabDomains[newValue]).then((response) => {
+      console.log(`Tab ${newValue} refresh response:`, response);
     });
   };
 
@@ -258,24 +260,23 @@ const NotificationsMenu = () => {
   };
 
   const filteredNotifications = useMemo(() => {
-    // console.log("Filtering notifications for tab:", activeTab, {
-    //   notifications,
-    //   harvestAlerts,
-    //   scheduleAlerts,
-    // });
-    if (activeTab === 0) return notifications;
-    if (activeTab === 1) return [...harvestAlerts, ...scheduleAlerts];
-    if (activeTab === 2) return cattleAlerts;
-    if (activeTab === 3)
-      return [
-        ...inventoryAlerts,
-        ...inventoryRequestAlerts,
-        ...inventoryResponseAlerts,
-      ];
-    if (activeTab === 4) return hrAlerts;
-    if (activeTab === 5) return financeAlerts;
-    return [];
+    if (userRole === "Admin") {
+      if (activeTab === 0) return notifications;
+      if (activeTab === 1) return [...harvestAlerts, ...scheduleAlerts];
+      if (activeTab === 2) return cattleAlerts;
+      if (activeTab === 3)
+        return [
+          ...inventoryAlerts,
+          ...inventoryRequestAlerts,
+          ...inventoryResponseAlerts,
+        ];
+      if (activeTab === 4) return hrAlerts;
+      if (activeTab === 5) return financeAlerts;
+      return [];
+    }
+    return notifications; // Non-admins see all their notifications
   }, [
+    userRole,
     activeTab,
     notifications,
     harvestAlerts,
@@ -311,7 +312,7 @@ const NotificationsMenu = () => {
       acc[key].push(notification);
       return acc;
     }, {});
-    // console.log("Grouped notifications:", groups);
+    console.log("Grouped notifications:", groups);
     return Object.entries(groups).sort(([a], [b]) => {
       if (a === "Today") return -1;
       if (b === "Today") return 1;
@@ -322,6 +323,7 @@ const NotificationsMenu = () => {
   }, [filteredNotifications]);
 
   const isTabVisible = (tabIndex) => {
+    if (userRole !== "Admin") return false;
     if (tabIndex === 0) return true;
     if (tabIndex === 1) return showAgricultureControls || userRole === "Admin";
     if (tabIndex === 2) return showCattleControls || userRole === "Admin";
@@ -400,7 +402,7 @@ const NotificationsMenu = () => {
               sx: {
                 width: { xs: 320, sm: 400 },
                 maxHeight: maxMenuHeight,
-                overflow: "hidden",
+                overflowY: "auto",
                 mt: 1.5,
                 borderRadius: 2,
               },
@@ -410,49 +412,53 @@ const NotificationsMenu = () => {
             <Box
               sx={{
                 display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                p: 2,
-                bgcolor: "primary.main",
-                color: "primary.contrastText",
+                flexDirection: "column",
+                height: maxMenuHeight,
               }}
             >
-              <Typography variant="h6" component="div" fontWeight="500">
-                Notifications
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <Chip
-                  label={`${unreadCount} unread`}
-                  size="small"
-                  color="secondary"
-                  sx={{ fontWeight: 500 }}
-                />
-                <Tooltip title="Refresh Notifications">
-                  <IconButton
-                    color="inherit"
-                    size="small"
-                    onClick={handleRefresh}
-                    disabled={isLoading || isLoadingMore}
-                    aria-label="Refresh Notifications"
-                  >
-                    <RefreshIcon />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </Box>
-
-            {(userRole === "Admin" ||
-              showAgricultureControls ||
-              showCattleControls ||
-              showInventoryControls ||
-              showHRControls ||
-              showFinanceControls) && (
-              <Box sx={{ p: 2, bgcolor: "grey.100" }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Generate Notifications
+              {/* Header */}
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                }}
+              >
+                <Typography variant="h6" component="div" fontWeight="500">
+                  {userRole === "Admin"
+                    ? "Notifications"
+                    : "Your Notifications"}
                 </Typography>
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                  {userRole === "Admin" && (
+                <Box
+                  sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}
+                >
+                  <Chip
+                    label={`${unreadCount} unread`}
+                    size="small"
+                    color="secondary"
+                    sx={{ fontWeight: 500 }}
+                  />
+                  <Tooltip title="Refresh Notifications">
+                    <IconButton
+                      color="inherit"
+                      size="small"
+                      onClick={handleRefresh}
+                      disabled={isLoading || isLoadingMore}
+                      aria-label="Refresh Notifications"
+                    >
+                      <RefreshIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+
+              {/* Generate notifications for admins */}
+              {userRole === "Admin" && (
+                <Box sx={{ p: 2, bgcolor: "grey.100" }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Generate Notifications
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
                     <Button
                       variant="outlined"
                       size="small"
@@ -463,8 +469,6 @@ const NotificationsMenu = () => {
                     >
                       All
                     </Button>
-                  )}
-                  {showAgricultureControls && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -475,8 +479,6 @@ const NotificationsMenu = () => {
                     >
                       Agriculture
                     </Button>
-                  )}
-                  {showCattleControls && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -487,8 +489,6 @@ const NotificationsMenu = () => {
                     >
                       Cattle
                     </Button>
-                  )}
-                  {showInventoryControls && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -499,8 +499,6 @@ const NotificationsMenu = () => {
                     >
                       Inventory
                     </Button>
-                  )}
-                  {showHRControls && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -511,8 +509,6 @@ const NotificationsMenu = () => {
                     >
                       HR
                     </Button>
-                  )}
-                  {showFinanceControls && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -523,420 +519,423 @@ const NotificationsMenu = () => {
                     >
                       Finance
                     </Button>
-                  )}
+                  </Box>
                 </Box>
-              </Box>
-            )}
+              )}
 
-            <Tabs
-              value={activeTab}
-              onChange={handleTabChange}
-              variant="scrollable"
-              scrollButtons="auto"
-              sx={{
-                borderBottom: 1,
-                borderColor: "divider",
-                minHeight: 48,
-                "& .MuiTab-root": {
+              {/* Tabs */}
+              <Tabs
+                value={activeTab}
+                onChange={handleTabChange}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{
+                  borderBottom: 1,
+                  borderColor: "divider",
                   minHeight: 48,
-                  textTransform: "none",
-                  fontWeight: 500,
-                },
-              }}
-              aria-label="Notification Categories"
-            >
-              <Tab
-                label="All"
-                icon={
-                  getTabUnreadCount(0) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(0)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(0) ? "flex" : "none" }}
-                aria-label={`All Notifications (${getTabUnreadCount(
-                  0
-                )} unread)`}
-              />
-              <Tab
-                label="Crop"
-                icon={
-                  getTabUnreadCount(1) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(1)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(1) ? "flex" : "none" }}
-                aria-label={`Crop Notifications (${getTabUnreadCount(
-                  1
-                )} unread)`}
-              />
-              <Tab
-                label="Cattle"
-                icon={
-                  getTabUnreadCount(2) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(2)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(2) ? "flex" : "none" }}
-                aria-label={`Cattle Notifications (${getTabUnreadCount(
-                  2
-                )} unread)`}
-              />
-              <Tab
-                label="Inventory"
-                icon={
-                  getTabUnreadCount(3) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(3)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(3) ? "flex" : "none" }}
-                aria-label={`Inventory Notifications (${getTabUnreadCount(
-                  3
-                )} unread)`}
-              />
-              <Tab
-                label="HR"
-                icon={
-                  getTabUnreadCount(4) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(4)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(4) ? "flex" : "none" }}
-                aria-label={`HR Notifications (${getTabUnreadCount(4)} unread)`}
-              />
-              <Tab
-                label="Finance"
-                icon={
-                  getTabUnreadCount(5) > 0 ? (
-                    <Badge
-                      badgeContent={getTabUnreadCount(5)}
-                      color="error"
-                      sx={{
-                        "& .MuiBadge-badge": {
-                          fontSize: 10,
-                          height: 16,
-                          minWidth: 16,
-                        },
-                      }}
-                    />
-                  ) : null
-                }
-                iconPosition="end"
-                sx={{ display: isTabVisible(5) ? "flex" : "none" }}
-                aria-label={`Finance Notifications (${getTabUnreadCount(
-                  5
-                )} unread)`}
-              />
-            </Tabs>
-
-            <Box
-              sx={{
-                maxHeight: maxMenuHeight - 100,
-                minHeight: 150, // Ensure minimum height for visibility
-                overflow: "auto",
-              }}
-              role="region"
-              aria-label="Notification List"
-            >
-              {isLoading && page === 1 ? (
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    p: 4,
-                  }}
-                >
-                  <CircularProgress
-                    size={30}
-                    aria-label="Loading Notifications"
-                  />
-                </Box>
-              ) : error ? (
-                <Box sx={{ p: 3, textAlign: "center" }}>
-                  <Typography color="error" variant="body2">
-                    {error}
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={handleRefresh}
-                    sx={{ mt: 2 }}
-                    aria-label="Retry Fetching Notifications"
-                  >
-                    Try Again
-                  </Button>
-                </Box>
-              ) : groupedNotifications.length === 0 ? (
-                <Box sx={{ p: 4, textAlign: "center" }}>
-                  <Typography color="text.secondary" variant="body2">
-                    No notifications to display
-                  </Typography>
-                </Box>
-              ) : (
-                groupedNotifications.map(
-                  ([date, notifications], groupIndex) => (
-                    <Box key={date}>
-                      <Typography
-                        variant="subtitle2"
+                  "& .MuiTab-root": {
+                    minHeight: 48,
+                    textTransform: "none",
+                    fontWeight: 500,
+                  },
+                }}
+                aria-label="Notification Categories"
+              >
+                <Tab
+                  label="All"
+                  icon={
+                    getTabUnreadCount(0) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(0)}
+                        color="error"
                         sx={{
-                          p: 2,
-                          bgcolor: "grey.100",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 1,
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
                         }}
-                      >
-                        {date}
-                      </Typography>
-                      {notifications.map((notification, index) => (
-                        <MotionMenuItem
-                          key={notification._id}
-                          custom={groupIndex * notifications.length + index}
-                          variants={itemVariants}
-                          initial="hidden"
-                          animate="visible"
-                          exit="exit"
-                          divider
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(0) ? "flex" : "none" }}
+                  aria-label={`All Notifications (${getTabUnreadCount(
+                    0
+                  )} unread)`}
+                />
+                <Tab
+                  label="Crop"
+                  icon={
+                    getTabUnreadCount(1) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(1)}
+                        color="error"
+                        sx={{
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
+                        }}
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(1) ? "flex" : "none" }}
+                  aria-label={`Crop Notifications (${getTabUnreadCount(
+                    1
+                  )} unread)`}
+                />
+                <Tab
+                  label="Cattle"
+                  icon={
+                    getTabUnreadCount(2) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(2)}
+                        color="error"
+                        sx={{
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
+                        }}
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(2) ? "flex" : "none" }}
+                  aria-label={`Cattle Notifications (${getTabUnreadCount(
+                    2
+                  )} unread)`}
+                />
+                <Tab
+                  label="Inventory"
+                  icon={
+                    getTabUnreadCount(3) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(3)}
+                        color="error"
+                        sx={{
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
+                        }}
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(3) ? "flex" : "none" }}
+                  aria-label={`Inventory Notifications (${getTabUnreadCount(
+                    3
+                  )} unread)`}
+                />
+                <Tab
+                  label="HR"
+                  icon={
+                    getTabUnreadCount(4) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(4)}
+                        color="error"
+                        sx={{
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
+                        }}
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(4) ? "flex" : "none" }}
+                  aria-label={`HR Notifications (${getTabUnreadCount(
+                    4
+                  )} unread)`}
+                />
+                <Tab
+                  label="Finance"
+                  icon={
+                    getTabUnreadCount(5) > 0 ? (
+                      <Badge
+                        badgeContent={getTabUnreadCount(5)}
+                        color="error"
+                        sx={{
+                          "& .MuiBadge-badge": {
+                            fontSize: 10,
+                            height: 16,
+                            minWidth: 16,
+                          },
+                        }}
+                      />
+                    ) : null
+                  }
+                  iconPosition="end"
+                  sx={{ display: isTabVisible(5) ? "flex" : "none" }}
+                  aria-label={`Finance Notifications (${getTabUnreadCount(
+                    5
+                  )} unread)`}
+                />
+              </Tabs>
+
+              {/* Notification list */}
+              <Box sx={{ flex: 1, overflowY: "auto" }}>
+                {isLoading && page === 1 ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      p: 4,
+                    }}
+                  >
+                    <CircularProgress
+                      size={30}
+                      aria-label="Loading Notifications"
+                    />
+                  </Box>
+                ) : error ? (
+                  <Box sx={{ p: 3, textAlign: "center" }}>
+                    <Typography color="error" variant="body2">
+                      {error}
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleRefresh}
+                      sx={{ mt: 2 }}
+                      aria-label="Retry Fetching Notifications"
+                    >
+                      Try Again
+                    </Button>
+                  </Box>
+                ) : groupedNotifications.length === 0 ? (
+                  <Box sx={{ p: 4, textAlign: "center" }}>
+                    <Typography color="text.secondary" variant="body2">
+                      No notifications to display
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleRefresh}
+                      sx={{ mt: 2 }}
+                      aria-label="Refresh Notifications"
+                    >
+                      Refresh
+                    </Button>
+                  </Box>
+                ) : (
+                  groupedNotifications.map(
+                    ([date, notifications], groupIndex) => (
+                      <Box key={date}>
+                        <Typography
+                          variant="subtitle2"
                           sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-start",
-                            p: 0,
-                            backgroundColor: notification.isRead
-                              ? "rgba(0, 0, 0, 0.02)"
-                              : "white",
+                            p: 2,
+                            bgcolor: "grey.100",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 1,
                           }}
-                          role="menuitem"
-                          aria-label={`${notification.title}, ${
-                            notification.isRead ? "read" : "unread"
-                          }`}
                         >
-                          <Box
+                          {date}
+                        </Typography>
+                        {notifications.map((notification, index) => (
+                          <MotionMenuItem
+                            key={notification._id}
+                            custom={groupIndex * notifications.length + index}
+                            variants={itemVariants}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            divider
                             sx={{
-                              width: "100%",
-                              p: 2,
                               display: "flex",
-                              borderLeft: 3,
-                              borderColor: getPriorityData(
-                                notification.priority
-                              ).color,
+                              flexDirection: "column",
+                              alignItems: "flex-start",
+                              p: 0,
+                              backgroundColor: notification.isRead
+                                ? "rgba(0, 0, 0, 0.02)"
+                                : "white",
                             }}
+                            role="menuitem"
+                            aria-label={`${notification.title}, ${
+                              notification.isRead ? "read" : "unread"
+                            }`}
                           >
-                            <Box sx={{ mr: 2 }}>
-                              <Avatar
-                                sx={{
-                                  bgcolor: "background.paper",
-                                  width: 40,
-                                  height: 40,
-                                }}
-                              >
-                                {getNotificationIcon(
-                                  notification.type,
-                                  notification.domain
-                                )}
-                              </Avatar>
-                            </Box>
-                            <Box sx={{ flex: 1 }}>
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "flex-start",
-                                }}
-                              >
-                                <Typography
-                                  variant="subtitle1"
-                                  fontWeight={
-                                    notification.isRead ? "normal" : "medium"
-                                  }
-                                  sx={{ mb: 0.5 }}
-                                >
-                                  {notification.title}
-                                </Typography>
-                                <Chip
-                                  label={
-                                    getPriorityData(notification.priority).label
-                                  }
-                                  size="small"
+                            <Box
+                              sx={{
+                                width: "100%",
+                                p: 2,
+                                display: "flex",
+                                borderLeft: 3,
+                                borderColor: getPriorityData(
+                                  notification.priority
+                                ).color,
+                              }}
+                            >
+                              <Box sx={{ mr: 2 }}>
+                                <Avatar
                                   sx={{
-                                    height: 20,
-                                    fontSize: "0.7rem",
-                                    bgcolor:
-                                      getPriorityData(notification.priority)
-                                        .color + "20",
-                                    color: getPriorityData(
-                                      notification.priority
-                                    ).color,
-                                    fontWeight: 500,
-                                    ml: 1,
+                                    bgcolor: "background.paper",
+                                    width: 40,
+                                    height: 40,
                                   }}
-                                />
-                              </Box>
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                sx={{ mb: 1 }}
-                              >
-                                {notification.message}
-                              </Typography>
-                              <Box
-                                sx={{
-                                  width: "100%",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  mt: 1,
-                                }}
-                              >
-                                <Box
-                                  sx={{ display: "flex", alignItems: "center" }}
                                 >
-                                  <AccessTimeIcon
+                                  {getNotificationIcon(
+                                    notification.type,
+                                    notification.domain
+                                  )}
+                                </Avatar>
+                              </Box>
+                              <Box sx={{ flex: 1 }}>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <Typography
+                                    variant="subtitle1"
+                                    fontWeight={
+                                      notification.isRead ? "normal" : "medium"
+                                    }
+                                    sx={{ mb: 0.5 }}
+                                  >
+                                    {notification.title}
+                                  </Typography>
+                                  <Chip
+                                    label={
+                                      getPriorityData(notification.priority)
+                                        .label
+                                    }
+                                    size="small"
                                     sx={{
-                                      fontSize: 14,
-                                      mr: 0.5,
-                                      color: "text.secondary",
+                                      height: 20,
+                                      fontSize: "0.7rem",
+                                      bgcolor:
+                                        getPriorityData(notification.priority)
+                                          .color + "20",
+                                      color: getPriorityData(
+                                        notification.priority
+                                      ).color,
+                                      fontWeight: 500,
+                                      ml: 1,
                                     }}
                                   />
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                  >
-                                    {formatDate(notification.dueDate)}
-                                  </Typography>
                                 </Box>
-                                {!notification.isRead ? (
-                                  <Tooltip title="Mark as read">
-                                    <Button
-                                      size="small"
-                                      color="primary"
-                                      onClick={(e) =>
-                                        handleMarkAsRead(notification._id, e)
-                                      }
-                                      startIcon={<CheckCircleIcon />}
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                  sx={{ mb: 1 }}
+                                >
+                                  {notification.message}
+                                </Typography>
+                                <Box
+                                  sx={{
+                                    width: "100%",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    mt: 1,
+                                  }}
+                                >
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <AccessTimeIcon
                                       sx={{
-                                        textTransform: "none",
-                                        fontWeight: 500,
-                                        p: "2px 8px",
+                                        fontSize: 14,
+                                        mr: 0.5,
+                                        color: "text.secondary",
                                       }}
-                                      aria-label={`Mark ${notification.title} as read`}
+                                    />
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {formatDate(notification.dueDate)}
+                                    </Typography>
+                                  </Box>
+                                  {!notification.isRead ? (
+                                    <Tooltip title="Mark as read">
+                                      <Button
+                                        size="small"
+                                        color="primary"
+                                        onClick={(e) =>
+                                          handleMarkAsRead(notification._id, e)
+                                        }
+                                        startIcon={<CheckCircleIcon />}
+                                        sx={{
+                                          textTransform: "none",
+                                          fontWeight: 500,
+                                          p: "2px 8px",
+                                        }}
+                                        aria-label={`Mark ${notification.title} as read`}
+                                      >
+                                        Read
+                                      </Button>
+                                    </Tooltip>
+                                  ) : (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ fontStyle: "italic" }}
                                     >
                                       Read
-                                    </Button>
-                                  </Tooltip>
-                                ) : (
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ fontStyle: "italic" }}
-                                  >
-                                    Read
-                                  </Typography>
-                                )}
+                                    </Typography>
+                                  )}
+                                </Box>
                               </Box>
                             </Box>
-                          </Box>
-                        </MotionMenuItem>
-                      ))}
-                    </Box>
+                          </MotionMenuItem>
+                        ))}
+                      </Box>
+                    )
                   )
-                )
-              )}
-              {hasMore && (
-                <Box
-                  ref={observerRef}
-                  sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    p: 2,
-                  }}
-                >
-                  {isLoadingMore && (
-                    <CircularProgress
-                      size={20}
-                      aria-label="Loading More Notifications"
-                    />
-                  )}
-                </Box>
+                )}
+                {hasMore && (
+                  <Box ref={observerRef} sx={{ p: 2, textAlign: "center" }}>
+                    {isLoadingMore && (
+                      <CircularProgress
+                        size={20}
+                        aria-label="Loading More Notifications"
+                      />
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              {/* Mark All as Read */}
+              {filteredNotifications.length > 0 && (
+                <>
+                  <Divider />
+                  <Box sx={{ p: 2 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleMarkAllAsRead}
+                      fullWidth
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: "none",
+                        fontWeight: 500,
+                      }}
+                      aria-label="Mark All Notifications as Read"
+                    >
+                      Mark All as Read
+                    </Button>
+                  </Box>
+                </>
               )}
             </Box>
-
-            {filteredNotifications.length > 0 && (
-              <>
-                <Divider />
-                <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleMarkAllAsRead}
-                    fullWidth
-                    sx={{
-                      borderRadius: 2,
-                      textTransform: "none",
-                      fontWeight: 500,
-                    }}
-                    aria-label="Mark All Notifications as Read"
-                  >
-                    Mark All as Read
-                  </Button>
-                </Box>
-              </>
-            )}
           </MotionMenu>
         )}
       </AnimatePresence>

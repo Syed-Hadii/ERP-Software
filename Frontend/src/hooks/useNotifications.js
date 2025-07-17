@@ -28,7 +28,7 @@ export const useNotifications = () => {
     };
 
     // Fetch user-specific notifications with pagination
-    const fetchNotifications = useCallback(async (page = 1, append = false) => {
+    const fetchNotifications = useCallback(async (page = 1, append = false, domain = 'all') => {
         if (!userId) {
             setError('Please log in to view notifications');
             setNotifications([]);
@@ -39,9 +39,9 @@ export const useNotifications = () => {
         try {
             const response = await axios.get(API_ENDPOINTS.notifications.all(userId), {
                 headers: getAuthHeader(),
-                params: { limit: 50, page },
+                params: { limit: 50, page, domain },
             });
-
+            // console.log(`Fetch notifications response (domain: ${domain}):`, response.data);
             if (response.data && response.data.success) {
                 setNotifications((prev) => append ? [...prev, ...(response.data.data || [])] : response.data.data || []);
                 return response.data;
@@ -55,6 +55,7 @@ export const useNotifications = () => {
                     : err.response?.status === 500
                         ? 'Server error. Please try later.'
                         : err.message || 'Failed to fetch notifications';
+            console.error('Fetch notifications error:', err.response || err);
             setError(errorMsg);
             if (!append) setNotifications([]);
             return { success: false, data: [] };

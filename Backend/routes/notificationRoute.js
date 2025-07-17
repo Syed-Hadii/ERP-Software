@@ -10,7 +10,7 @@ router.use(notificationAccess);
 // Fetch notifications for a user or their roles
 router.get('/:userId', async (req, res) => {
     const { userId } = req.params;
-    const { since, limit = 20, page = 1 } = req.query;
+    const { since, limit = 20, page = 1, domain } = req.query;
     try {
         const query = {
             $or: [
@@ -22,13 +22,19 @@ router.get('/:userId', async (req, res) => {
         if (since) {
             query.createdAt = { $gt: new Date(since) };
         }
+        if (domain && domain !== 'all') { // Add domain filter
+            query.domain = domain;
+        }
+        console.log('Fetching notifications with query:', query);
         const notifications = await Notification.find(query)
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
         const total = await Notification.countDocuments(query);
+        console.log('Notifications fetched:', notifications.length, 'Total:', total);
         res.json({ success: true, data: notifications, total, page, limit });
     } catch (error) {
+        console.error('Error fetching notifications:', error);
         res.status(500).json({ success: false, message: 'Error fetching notifications', error: error.message });
     }
 });
