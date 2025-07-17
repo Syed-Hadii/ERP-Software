@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Wrapper from "../utils/wrapper";
-import { BASE_URL } from "../config/config";
-import { FormField, BatchAccountEntry } from "../components/SharedComponents";
-import PrintVoucher from "../components/PrintVoucher";
+import Wrapper from "../../utils/wrapper";
+import { BASE_URL } from "../../config/config";
+import { FormField, BatchAccountEntry } from "../../components/SharedComponents";
+import PrintVoucher from "../../components/PrintVoucher";
 import { format, parse } from "date-fns";
 
 const BatchEntryForm = () => {

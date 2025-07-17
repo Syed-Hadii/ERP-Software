@@ -1,4 +1,4 @@
-import VoucherList from "../components/VoucherList";
+import VoucherList from "../../components/VoucherList";
 
 const BatchVoucherListPage = () => {
   return (

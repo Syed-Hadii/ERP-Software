@@ -261,12 +261,15 @@ const FinanceDashboard = () => {
 
   // Top Inventory Items Chart Data
   const inventoryChartData = {
-    labels: dashboardData.topInventoryItems.map((item) => item.name) || [],
+    labels: Array.isArray(dashboardData.topInventoryItems)
+      ? dashboardData.topInventoryItems.map((item) => item.name || "N/A")
+      : [],
     datasets: [
       {
         label: "Inventory Value (PKR)",
-        data:
-          dashboardData.topInventoryItems.map((item) => item.totalCost) || [],
+        data: Array.isArray(dashboardData.topInventoryItems)
+          ? dashboardData.topInventoryItems.map((item) => item.totalCost || 0)
+          : [],
         borderColor: "rgba(236, 72, 153, 1)",
         backgroundColor: "rgba(236, 72, 153, 0.2)",
         fill: true,
@@ -309,7 +312,7 @@ const FinanceDashboard = () => {
           component="h1"
           sx={{ fontWeight: "bold", color: "grey.800" }}
         >
-          ERP Dashboard
+          Financial Dashboard
         </Wrapper.Typography>
         <Wrapper.Button
           variant="contained"

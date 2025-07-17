@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Wrapper from "../../utils/wrapper";
 import { BASE_URL } from "../../config/config";
 import { FormField, JournalAccountEntry } from "../../components/SharedComponents";
-import PrintBill from "../../components/PrintBill"; // Assuming PrintBill is in this path
+import PrintBill from "../../components/PrintBill"
 
 const JournalEntryForm = () => {
   const navigate = useNavigate();

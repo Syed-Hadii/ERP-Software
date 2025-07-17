@@ -55,6 +55,7 @@ const payrollRequestRouter = require("./routes/HR/payrollRequest.js");
 const inventoryDashboardRouter = require("./routes/Inventory/InventoryDashboardRoute.js");
 const agricultureDashboardRouter = require("./routes/Agriculture/AgricultureDashboardRoute.js");
 const agroInventoryRouter = require("./routes/Agriculture/agroInventory.js");
+const batchEntryRouter = require("./routes/Finance/batchEntry.js");
 
 // Load environment variables
 dotenv.config();
@@ -126,7 +127,8 @@ app.use("/loan", loanRouter);
 app.use("/bank", bankRouter);
 app.use("/finance-dashboard", financeDashboardRouter);
 app.use("/chartaccount", chartAccountRouter);
-app.use("/transactionEntry", transactionEntryRouter);
+app.use("/transaction-entry", transactionEntryRouter);
+app.use("/batch-entry", batchEntryRouter);
 app.use("/journalvoucher", journalVoucherRouter);
 app.use("/closePeriod", closingRouter);
 app.use("/reminder", reminderRouter);

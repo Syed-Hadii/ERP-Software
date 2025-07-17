@@ -302,6 +302,12 @@ const sections = [
         icon: Wrapper.DescriptionIcon,
         roles: ["Admin", "Finance Manager"],
       },
+      {
+        label: "Batch Entry",
+        path: "/batch-entry",
+        icon: Wrapper.CallMadeIcon,
+        roles: ["Admin", "Finance Manager"],
+      },
     ],
   },
 ];

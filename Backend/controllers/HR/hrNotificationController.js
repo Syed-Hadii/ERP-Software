@@ -3,15 +3,11 @@ const Payroll_Request = require('../../models/HR/payrollRequest');
 
 const generatePayrollRequestNotifications = async (req, res) => {
     try {
-        const payrollRequests = await Payroll_Request.find({ status: 'pending' })
-            .populate('requestedBy');
+        const payrollRequests = await Payroll_Request.find({ status: 'pending' }) 
 
         let count = 0;
         for (const request of payrollRequests) {
-            if (!request.requestedBy) {
-                console.warn(`Skipping payroll request ${request._id}: Missing requestedBy`);
-                continue;
-            }
+           
 
             const existingNotification = await Notification.findOne({
                 type: 'payroll-request',
@@ -23,13 +19,13 @@ const generatePayrollRequestNotifications = async (req, res) => {
                 const newNotification = new Notification({
                     type: 'payroll-request',
                     title: `New Payroll Request`,
-                    message: `Payroll request of ${request.amount} submitted by ${request.requestedBy.name}`,
+                    message: `Payroll request of ${request.amount} submitted by HR`,
                     domain: 'hr',
                     entityId: request._id,
                     entityModel: 'Payroll_Request',
                     dueDate: new Date(),
                     priority: 'high',
-                    recipients: [request.requestedBy._id],
+                    recipients: 'HR',
                     roles: ['HR Manager', 'Admin']
                 });
                 await newNotification.save();
@@ -50,15 +46,11 @@ const generatePayrollRequestNotifications = async (req, res) => {
 
 const generatePayrollApprovalNotifications = async (req, res) => {
     try {
-        const payrollRequests = await Payroll_Request.find({ status: { $ne: 'pending' } })
-            .populate('requestedBy');
+        const payrollRequests = await Payroll_Request.find({ status: { $ne: 'pending' } }) 
 
         let count = 0;
         for (const request of payrollRequests) {
-            if (!request.requestedBy) {
-                console.warn(`Skipping payroll request ${request._id}: Missing requestedBy`);
-                continue;
-            }
+           
 
             const existingNotification = await Notification.findOne({
                 type: 'payroll-approval',
@@ -76,7 +68,7 @@ const generatePayrollApprovalNotifications = async (req, res) => {
                     entityModel: 'Payroll_Request',
                     dueDate: new Date(),
                     priority: 'medium',
-                    recipients: [request.requestedBy._id],
+                    recipients: 'HR',
                     roles: ['HR Manager', 'Admin']
                 });
                 await newNotification.save();

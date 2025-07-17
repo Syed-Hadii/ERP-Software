@@ -173,14 +173,21 @@ exports.getAllAccounts = async (req, res) => {
     }
 
     // Original response for non-dropdown requests
-    const accountsWithBalances = accounts.map(acc => ({
-      ...acc,
-      balance: acc.currentBalance,
-      formattedBalance: acc.currentBalance.toLocaleString('en-US', {
-        style: 'currency',
-        currency: 'PKR'
-      })
-    }));
+    const accountsWithBalances = accounts.map(acc => {
+      const balance = typeof acc.currentBalance === 'number' ? acc.currentBalance : 0;
+
+      return {
+        ...acc,
+        balance,
+        formattedBalance: balance.toLocaleString('en-US', {
+          style: 'currency',
+          currency: 'PKR',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })
+      };
+    });
+
 
     res.status(200).json({ success: true, data: accountsWithBalances });
   } catch (error) {
@@ -262,7 +269,7 @@ exports.updateAccount = async (req, res) => {
     }
 
     // Update journal if opening balance changed
-   
+
     await session.commitTransaction();
     res.status(200).json({ success: true, message: 'Account updated successfully', data: account });
   } catch (error) {

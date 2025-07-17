@@ -5,14 +5,10 @@ const Sales_Request = require('../../models/Cattle/dairySales');
 const generatePurchaseInvoiceNotifications = async (req, res) => {
     try {
         const purchaseInvoices = await Purchase_Request.find({ status: 'pending' })
-            .populate('requestedBy');
 
         let count = 0;
         for (const invoice of purchaseInvoices) {
-            if (!invoice.requestedBy) {
-                console.warn(`Skipping purchase invoice ${invoice._id}: Missing requestedBy`);
-                continue;
-            }
+
 
             const existingNotification = await Notification.findOne({
                 type: 'purchase-invoice',
@@ -30,7 +26,7 @@ const generatePurchaseInvoiceNotifications = async (req, res) => {
                     entityModel: 'Purchase_Request',
                     dueDate: new Date(),
                     priority: 'high',
-                    recipients: [invoice.requestedBy._id],
+                    recipients: 'Inventory Manager',
                     roles: ['Finance Manager', 'Admin']
                 });
                 await newNotification.save();
@@ -52,14 +48,10 @@ const generatePurchaseInvoiceNotifications = async (req, res) => {
 const generateSalesInvoiceNotifications = async (req, res) => {
     try {
         const salesInvoices = await Sales_Request.find({ status: 'pending' })
-            .populate('requestedBy');
 
         let count = 0;
         for (const invoice of salesInvoices) {
-            if (!invoice.requestedBy) {
-                console.warn(`Skipping sales invoice ${invoice._id}: Missing requestedBy`);
-                continue;
-            }
+
 
             const existingNotification = await Notification.findOne({
                 type: 'sales-invoice',
@@ -77,7 +69,7 @@ const generateSalesInvoiceNotifications = async (req, res) => {
                     entityModel: 'Sales_Request',
                     dueDate: new Date(),
                     priority: 'high',
-                    recipients: [invoice.requestedBy._id],
+                    recipients: 'Inventory Manager',
                     roles: ['Finance Manager', 'Admin']
                 });
                 await newNotification.save();
@@ -99,14 +91,10 @@ const generateSalesInvoiceNotifications = async (req, res) => {
 const generatePurchaseApprovalNotifications = async (req, res) => {
     try {
         const purchases = await Purchase_Request.find({ status: { $ne: 'pending' } })
-            .populate('requestedBy');
 
         let count = 0;
         for (const purchase of purchases) {
-            if (!purchase.requestedBy) {
-                console.warn(`Skipping purchase ${purchase._id}: Missing requestedBy`);
-                continue;
-            }
+          
 
             const existingNotification = await Notification.findOne({
                 type: 'purchase-approval',
@@ -124,7 +112,7 @@ const generatePurchaseApprovalNotifications = async (req, res) => {
                     entityModel: 'Purchase_Request',
                     dueDate: new Date(),
                     priority: 'medium',
-                    recipients: [purchase.requestedBy._id],
+                    recipients: 'Inventory Manager',
                     roles: ['Finance Manager', 'Admin']
                 });
                 await newNotification.save();
@@ -145,15 +133,10 @@ const generatePurchaseApprovalNotifications = async (req, res) => {
 
 const generateSalesApprovalNotifications = async (req, res) => {
     try {
-        const sales = await Sales_Request.find({ status: { $ne: 'pending' } })
-            .populate('requestedBy');
+        const sales = await Sales_Request.find({ status: { $ne: 'pending' } }) 
 
         let count = 0;
-        for (const sale of sales) {
-            if (!sale.requestedBy) {
-                console.warn(`Skipping sale ${sale._id}: Missing requestedBy`);
-                continue;
-            }
+        for (const sale of sales) { 
 
             const existingNotification = await Notification.findOne({
                 type: 'sales-approval',
@@ -171,7 +154,7 @@ const generateSalesApprovalNotifications = async (req, res) => {
                     entityModel: 'Sales_Request',
                     dueDate: new Date(),
                     priority: 'medium',
-                    recipients: [sale.requestedBy._id],
+                    recipients: 'Inventory Manager',
                     roles: ['Finance Manager', 'Admin']
                 });
                 await newNotification.save();
