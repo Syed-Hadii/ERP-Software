@@ -88,24 +88,24 @@ const NotificationsMenu = () => {
   const maxMenuHeight = useMemo(() => {
     const viewportHeight = window.innerHeight;
     const calculatedHeight = Math.min(viewportHeight * 0.9, 600);
-    console.log(
-      "Viewport height:",
-      window.innerHeight,
-      "Max menu height:",
-      calculatedHeight
-    );
+    // console.log(
+    //   "Viewport height:",
+    //   window.innerHeight,
+    //   "Max menu height:",
+    //   calculatedHeight
+    // );
     return calculatedHeight;
   }, []);
 
   // Log notifications state for debugging
   useEffect(() => {
-    console.log("Notifications state:", {
-      notifications,
-      unreadCount,
-      activeTab,
-      isLoading,
-      error,
-    });
+    // console.log("Notifications state:", {
+    //   notifications,
+    //   unreadCount,
+    //   activeTab,
+    //   isLoading,
+    //   error,
+    // });
   }, [notifications, unreadCount, activeTab, isLoading, error]);
 
   // Refresh notifications when menu opens or tab changes
@@ -114,7 +114,7 @@ const NotificationsMenu = () => {
       setPage(1);
       setHasMore(true);
       refreshNotifications(1).then((response) => {
-        console.log("Initial refresh response:", response);
+        // console.log("Initial refresh response:", response);
       });
     }
   }, [anchorEl, refreshNotifications]);
@@ -136,7 +136,7 @@ const NotificationsMenu = () => {
           setIsLoadingMore(true);
           refreshNotifications(page + 1)
             .then((response) => {
-              console.log("Infinite scroll response:", response);
+              // console.log("Infinite scroll response:", response);
               if (!response?.success || response?.data?.length < 50) {
                 setHasMore(false);
               }
@@ -179,7 +179,7 @@ const NotificationsMenu = () => {
     setPage(1);
     setHasMore(true);
     refreshNotifications(1).then((response) => {
-      console.log("Refresh response:", response);
+      // console.log("Refresh response:", response);
     });
   };
 
@@ -196,7 +196,7 @@ const NotificationsMenu = () => {
     setPage(1);
     setHasMore(true);
     refreshNotifications(1).then((response) => {
-      console.log(`Tab ${newValue} refresh response:`, response);
+      // console.log(`Tab ${newValue} refresh response:`, response);
     });
   };
 
@@ -258,11 +258,11 @@ const NotificationsMenu = () => {
   };
 
   const filteredNotifications = useMemo(() => {
-    console.log("Filtering notifications for tab:", activeTab, {
-      notifications,
-      harvestAlerts,
-      scheduleAlerts,
-    });
+    // console.log("Filtering notifications for tab:", activeTab, {
+    //   notifications,
+    //   harvestAlerts,
+    //   scheduleAlerts,
+    // });
     if (activeTab === 0) return notifications;
     if (activeTab === 1) return [...harvestAlerts, ...scheduleAlerts];
     if (activeTab === 2) return cattleAlerts;
@@ -311,7 +311,7 @@ const NotificationsMenu = () => {
       acc[key].push(notification);
       return acc;
     }, {});
-    console.log("Grouped notifications:", groups);
+    // console.log("Grouped notifications:", groups);
     return Object.entries(groups).sort(([a], [b]) => {
       if (a === "Today") return -1;
       if (b === "Today") return 1;

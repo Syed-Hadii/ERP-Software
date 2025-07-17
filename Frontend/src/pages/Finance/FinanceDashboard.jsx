@@ -38,7 +38,7 @@ ChartJS.register(
 
 // Default dashboard data structure
 const defaultDashboardData = {
-  summary: {
+  financialSummary: {
     totalAssets: 0,
     totalLiabilities: 0,
     totalEquity: 0,
@@ -90,14 +90,15 @@ const FinanceDashboard = () => {
       const response = await Wrapper.axios.get(
         `${BASE_URL}/finance-dashboard/dashboard`
       );
+      console.log(response);
       if (response.data.success) {
         // Merge API data with default structure to ensure all fields exist
         setDashboardData({
           ...defaultDashboardData,
           ...response.data.data,
-          summary: {
-            ...defaultDashboardData.summary,
-            ...(response.data.data.summary || {}),
+          financialSummary: {
+            ...defaultDashboardData.financialSummary,
+            ...(response.data.data.financialSummary || {}),
           },
           inventorySummary: {
             ...defaultDashboardData.inventorySummary,
@@ -199,12 +200,12 @@ const FinanceDashboard = () => {
       {
         label: "Financial Metrics (PKR)",
         data: [
-          dashboardData.summary.totalAssets,
-          dashboardData.summary.totalLiabilities,
-          dashboardData.summary.totalEquity,
-          dashboardData.summary.netIncome,
-          dashboardData.summary.totalBankBalance,
-          dashboardData.summary.totalCashFlow,
+          dashboardData.financialSummary.totalAssets,
+          dashboardData.financialSummary.totalLiabilities,
+          dashboardData.financialSummary.totalEquity,
+          dashboardData.financialSummary.netIncome,
+          dashboardData.financialSummary.totalBankBalance,
+          dashboardData.financialSummary.totalCashFlow,
         ],
         backgroundColor: "rgba(34, 197, 94, 0.6)",
         borderColor: "rgba(34, 197, 94, 1)",
@@ -347,32 +348,32 @@ const FinanceDashboard = () => {
           : [
               {
                 label: "Total Assets",
-                value: dashboardData.summary.totalAssets,
+                value: dashboardData.financialSummary.totalAssets,
                 icon: <AccountBalance />,
               },
               {
                 label: "Total Liabilities",
-                value: dashboardData.summary.totalLiabilities,
+                value: dashboardData.financialSummary.totalLiabilities,
                 icon: <AccountBalance />,
               },
               {
                 label: "Total Equity",
-                value: dashboardData.summary.totalEquity,
+                value: dashboardData.financialSummary.totalEquity,
                 icon: <AccountBalance />,
               },
               {
                 label: "Net Income",
-                value: dashboardData.summary.netIncome,
+                value: dashboardData.financialSummary.netIncome,
                 icon: <AccountBalance />,
               },
               {
                 label: "Bank Balance",
-                value: dashboardData.summary.totalBankBalance,
+                value: dashboardData.financialSummary.totalBankBalance,
                 icon: <AccountBalance />,
               },
               {
                 label: "Cash Flow",
-                value: dashboardData.summary.totalCashFlow,
+                value: dashboardData.financialSummary.totalCashFlow,
                 icon: <AccountBalance />,
               },
             ].map((item, index) => (
