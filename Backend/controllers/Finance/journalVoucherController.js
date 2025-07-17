@@ -3,8 +3,8 @@ const JournalVoucher = require("../../models/Finance/journalVoucherModel.js");
 const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
 const AuditLog = require("../../models/Finance/auditLogModel.js");
 const Period = require("../../models/Finance/periodModel.js");
-const { updateRetainedEarnings } = require("../utils/accounting.js");
-const errorMessages = require("../utils/errorMessages.js");
+const { updateRetainedEarnings } = require("../../utils/accounting.js");
+const errorMessages = require("../../utils/errorMessages.js");
 const Joi = require('joi');
 const sanitize = require('mongo-sanitize');
 

@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
-const ChartAccount = require("../models/chartAccountsModel.js");
-const TransactionVoucher = require("../models/transactionEntry.js");
-const JournalVoucher = require("../models/journalVoucherModel.js");
+const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
+const TransactionVoucher = require("../../models/Finance/transactionEntry.js");
+const JournalVoucher = require("../../models/Finance/journalVoucherModel.js");
 const sanitize = require('mongo-sanitize');
-const COALedger = require("../models/coaLedger");
+const COALedger = require("../../models/Finance/coaLedger");
 
 // Helper function to generate account code
 const generateAccountCode = async (group, category, session) => {

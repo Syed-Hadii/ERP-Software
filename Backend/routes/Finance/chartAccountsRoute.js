@@ -7,7 +7,8 @@ const { createChartAccount,
     updateAccount,
     deleteAccount,
     getLedgerByCoaId,
-    getLedgerEntries } = require("../controllers/chartAccountsController.js");
+    getLedgerEntries } = require("../../controllers/Finance/chartAccountsController.js");
+
 
 const chartAccountRouter = express.Router()
 

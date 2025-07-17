@@ -1,4 +1,5 @@
-const ChartAccount = require('../models/chartAccountsModel');
+const ChartAccount = require('../models/Finance/chartAccountsModel');
+
 
 async function updateRetainedEarnings(accountId, amount, type, session) {
     const account = await ChartAccount.findById(accountId).session(session);
