@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
 const TransactionVoucher = require("../../models/Finance/transactionEntry.js");
 const BankAccount = require("../../models/Finance/bankAccountModel.js");
-const JournalVoucher = require("../../models/Finance/journalVoucherModel.js");
 const AuditLog = require("../../models/Finance/auditLogModel.js");
 const Period = require("../../models/Finance/periodModel.js");
 const Customer = require("../../models/Inventory/customerModel.js");
@@ -11,6 +10,7 @@ const { updateRetainedEarnings } = require("../../utils/accounting.js");
 const errorMessages = require("../../utils/errorMessages.js");
 const Joi = require('joi');
 const sanitize = require('mongo-sanitize');
+const { createCOALedgerEntry } = require("../../utils/coaLedger.js");
 
 const transactionSchema = Joi.object({
   date: Joi.date().required().error(new Error(errorMessages.invalidDate)),
@@ -67,7 +67,7 @@ const updatePartyTransactionHistory = async (voucher, session) => {
 
     customer.transactionHistory.push({
       date: voucher.date,
-      type: 'Payment',
+      type: 'Receipt',
       amount: voucher.totalAmount,
       reference: voucher.voucherNumber,
       description: voucher.description || `${voucher.voucherType} transaction`,
@@ -119,7 +119,7 @@ const add = async (req, res) => {
       totalAmount,
       status
     } = sanitizedBody;
-
+    console.log('sanitizedBody', sanitizedBody);
     const parsedDate = new Date(date);
     const closedPeriod = await Period.findOne({ endDate: { $gte: parsedDate }, status: 'closed' }).session(session);
     if (closedPeriod) throw new Error(errorMessages.closedPeriod);
@@ -184,18 +184,44 @@ const add = async (req, res) => {
 
     if (status === 'Posted') {
       const journalAccounts = [];
+      const ledgerEntries = [];
+
       if (paymentMethod === 'Cash') {
         journalAccounts.push({
           account: cashChartAccount._id,
           debitAmount: voucherType === 'Receipt' ? totalAmount : 0,
           creditAmount: voucherType === 'Payment' ? totalAmount : 0,
         });
+        ledgerEntries.push(createCOALedgerEntry({
+          coaId: cashChartAccount._id,
+          date: parsedDate,
+          debit: voucherType === 'Receipt' ? totalAmount : 0,
+          credit: voucherType === 'Payment' ? totalAmount : 0,
+          reference: `TXN-${voucher.voucherNumber}`,
+          sourceType: 'Payment Voucher',
+          sourceId: voucher._id,
+          description: `${voucherType} for ${party}`,
+          session,
+          createdBy: req.user?.id || 'system',
+        }));
       } else {
         journalAccounts.push({
           account: bank.chartAccountId,
           debitAmount: voucherType === 'Receipt' ? totalAmount : 0,
           creditAmount: voucherType === 'Payment' ? totalAmount : 0,
         });
+        ledgerEntries.push(createCOALedgerEntry({
+          coaId: bank.chartAccountId,
+          date: parsedDate,
+          debit: voucherType === 'Receipt' ? totalAmount : 0,
+          credit: voucherType === 'Payment' ? totalAmount : 0,
+          reference: `TXN-${voucher.voucherNumber}`,
+          sourceType: 'Payment Voucher',
+          sourceId: voucher._id,
+          description: `${voucherType} for ${party}`,
+          session,
+          createdBy: req.user?.id || 'system',
+        }));
       }
 
       for (const acc of accounts) {
@@ -205,19 +231,24 @@ const add = async (req, res) => {
           debitAmount: voucherType === 'Payment' ? acc.amount : 0,
           creditAmount: voucherType === 'Receipt' ? acc.amount : 0,
         });
+        ledgerEntries.push(createCOALedgerEntry({
+          coaId: acc.chartAccount,
+          date: parsedDate,
+          debit: voucherType === 'Payment' ? acc.amount : 0,
+          credit: voucherType === 'Receipt' ? acc.amount : 0,
+          reference: `TXN-${voucher.voucherNumber}`,
+          sourceType: 'Payment Voucher',
+          sourceId: voucher._id,
+          description: `${voucherType} for ${party}`,
+          session,
+          createdBy: req.user?.id || 'system',
+        }));
         if (['Income', 'Expense'].includes(chartAccount.group)) {
           await updateRetainedEarnings(acc.chartAccount, acc.amount, chartAccount.group, session);
         }
       }
 
-      const journal = new JournalVoucher({
-        date: parsedDate,
-        reference: `TXN-${voucher.voucherNumber}`,
-        description: `${voucherType} for ${party}`,
-        status: 'Posted',
-        accounts: journalAccounts,
-      });
-      await journal.save({ session });
+
 
       const updatePromises = [];
       if (paymentMethod === 'Cash') {
@@ -244,7 +275,7 @@ const add = async (req, res) => {
           session
         ));
       }
-      await Promise.all(updatePromises);
+      await Promise.all([...ledgerEntries, ...updatePromises]);
 
       if (paymentMethod === 'Bank' && bank) {
         bank.currentBalance += voucherType === 'Receipt' ? totalAmount : -totalAmount;
@@ -254,19 +285,20 @@ const add = async (req, res) => {
       await updatePartyTransactionHistory(voucher, session);
     }
 
-    // Fix: Pass document as an array for AuditLog.create
     await AuditLog.create([{
       action: 'create',
       entity: 'TransactionVoucher',
       entityId: voucher._id,
       changes: sanitizedBody,
-      timestamp: new Date()
+      timestamp: new Date(),
+      userId: req.user?.id || 'system',
     }], { session });
 
     await session.commitTransaction();
     res.status(201).json({ success: true, message: `${voucherType} voucher created`, data: voucher });
   } catch (error) {
     await session.abortTransaction();
+    console.error(`[${new Date().toISOString()}] add: Error`, { error: error.message });
     res.status(400).json({ success: false, message: error.message });
   } finally {
     session.endSession();
@@ -325,315 +357,34 @@ const update = async (req, res) => {
   session.startTransaction();
 
   try {
-    const sanitizedBody = sanitize(req.body);
-    const {
-      voucherId,
-      date,
-      reference,
-      voucherType,
-      paymentMethod,
-      bankAccount,
-      transactionNumber,
-      clearanceDate,
-      cashAccount,
-      party,
-      customer,
-      supplier,
-      description,
-      accounts,
-      totalAmount,
-      status
-    } = sanitizedBody;
-
-    const { error } = transactionSchema.validate({
-      date: date || new Date(),
-      reference,
-      voucherType,
-      paymentMethod,
-      bankAccount,
-      transactionNumber,
-      clearanceDate,
-      cashAccount,
-      party,
-      customer,
-      supplier,
-      description,
-      accounts,
-      totalAmount,
-      status
-    }, { abortEarly: false });
-    if (error) throw new Error(error.details.map(d => d.message).join(', '));
+    const { voucherId, status, } = req.body;
 
     const voucher = await TransactionVoucher.findById(voucherId).session(session);
-    if (!voucher) {
-      throw new Error('Voucher not found');
+    if (!voucher) throw new Error('Voucher not found');
+
+    // Prevent changing from Posted to Draft
+    if (voucher.status === 'Posted' && status === 'Draft') {
+      throw new Error('Cannot change Posted voucher to Draft');
     }
 
-    const parsedDate = date ? new Date(date) : voucher.date;
-    const closedPeriod = await Period.findOne({ endDate: { $gte: parsedDate }, status: 'closed' }).session(session);
-    if (closedPeriod) throw new Error(errorMessages.closedPeriod);
 
-    if (voucher.status === "Posted" && status === "Draft") {
-      throw new Error('Cannot change Posted voucher to Draft without reversing journal entries');
-    }
-    if (voucher.status === "Void" && status !== "Void") {
-      throw new Error('Voided vouchers cannot be updated to other statuses');
-    }
+    // Update voucher 
+    voucher.status = status || voucher.status;
 
-    const accountIds = accounts?.map(acc => acc.chartAccount);
-    if (accountIds && new Set(accountIds).size !== accountIds.length) {
-      throw new Error(errorMessages.duplicateAccounts);
+    // If changing to Posted, post the journal entries
+    if (status === 'Posted' && voucher.status !== 'Posted') {
+      // Add your posting logic here (similar to purchase invoice)
+      // This should create journal entries, update balances, etc.
     }
 
-    if (accounts && totalAmount) {
-      const accountsTotal = accounts.reduce((sum, acc) => sum + acc.amount, 0);
-      if (accountsTotal !== totalAmount) {
-        throw new Error(errorMessages.unbalancedEntry);
-      }
-    }
-
-    let cashChartAccount = null;
-    let bank = null;
-    if (paymentMethod === "Cash" && cashAccount) {
-      cashChartAccount = await ChartAccount.findById(cashAccount).session(session);
-      if (!cashChartAccount || cashChartAccount.group !== 'Assets' || !cashChartAccount.name.match(/cash/i)) {
-        throw new Error(errorMessages.invalidAccount);
-      }
-    } else if (paymentMethod === "Bank" && bankAccount) {
-      bank = await BankAccount.findById(bankAccount).session(session);
-      if (!bank) throw new Error('Bank account not found');
-    }
-
-    if (voucher.status === "Posted") {
-      const chartAccounts = await ChartAccount.find({
-        _id: { $in: voucher.accounts.map(acc => acc.chartAccount) }
-      }).session(session);
-
-      for (const acc of voucher.accounts) {
-        const chartAccount = chartAccounts.find(
-          ca => ca._id.toString() === acc.chartAccount.toString()
-        );
-        if (voucher.voucherType === "Payment") {
-          if (chartAccount.nature === "Debit") {
-            chartAccount.currentBalance -= acc.amount;
-          } else {
-            chartAccount.currentBalance += acc.amount;
-          }
-        } else {
-          if (chartAccount.nature === "Debit") {
-            chartAccount.currentBalance += acc.amount;
-          } else {
-            chartAccount.currentBalance -= acc.amount;
-          }
-        }
-        await chartAccount.save({ session });
-        if (['Income', 'Expense'].includes(chartAccount.group)) {
-          await updateRetainedEarnings(acc.chartAccount, -acc.amount, chartAccount.group, session);
-        }
-      }
-
-      if (voucher.paymentMethod === "Cash") {
-        const cashAccount = await ChartAccount.findById(voucher.cashAccount).session(session);
-        if (voucher.voucherType === "Payment") {
-          if (cashAccount.nature === "Debit") {
-            cashAccount.currentBalance += voucher.totalAmount;
-          } else {
-            cashAccount.currentBalance -= voucher.totalAmount;
-          }
-        } else {
-          if (cashAccount.nature === "Debit") {
-            cashAccount.currentBalance -= voucher.totalAmount;
-          } else {
-            cashAccount.currentBalance += voucher.totalAmount;
-          }
-        }
-        await cashAccount.save({ session });
-      } else {
-        const bank = await BankAccount.findById(voucher.bankAccount).session(session);
-        if (bank) {
-          if (voucher.voucherType === "Payment") {
-            bank.currentBalance += voucher.totalAmount;
-          } else {
-            bank.currentBalance -= voucher.totalAmount;
-          }
-          await bank.save({ session });
-
-          if (bank.chartAccountId) {
-            const bankChartAccount = await ChartAccount.findById(bank.chartAccountId).session(session);
-            if (bankChartAccount) {
-              if (voucher.voucherType === "Payment") {
-                if (bankChartAccount.nature === "Debit") {
-                  bankChartAccount.currentBalance += voucher.totalAmount;
-                } else {
-                  bankChartAccount.currentBalance -= voucher.totalAmount;
-                }
-              } else {
-                if (bankChartAccount.nature === "Debit") {
-                  bankChartAccount.currentBalance -= voucher.totalAmount;
-                } else {
-                  bankChartAccount.currentBalance += voucher.totalAmount;
-                }
-              }
-              await bankChartAccount.save({ session });
-            }
-          }
-        }
-      }
-
-      if (voucher.party === 'Customer' && voucher.customer) {
-        const customer = await Customer.findById(voucher.customer).session(session);
-        if (customer) {
-          const amount = voucher.voucherType === 'Receipt' ? voucher.totalAmount : -voucher.totalAmount;
-          customer.currentBalance -= amount;
-          customer.transactionHistory = customer.transactionHistory.filter(
-            th => th.reference !== voucher.voucherNumber
-          );
-          await customer.save({ session });
-        }
-      } else if (voucher.party === 'Supplier' && voucher.supplier) {
-        const supplier = await Supplier.findById(voucher.supplier).session(session);
-        if (supplier) {
-          const amount = voucher.voucherType === 'Payment' ? voucher.totalAmount : -voucher.totalAmount;
-          supplier.currentBalance -= amount;
-          supplier.transactionHistory = supplier.transactionHistory.filter(
-            th => th.reference !== voucher.voucherNumber
-          );
-          await supplier.save({ session });
-        }
-      }
-    }
-
-    if (voucher.paymentMethod === 'Bank' && voucher.bankAccount) {
-      const oldBank = await BankAccount.findById(voucher.bankAccount).session(session);
-      if (oldBank) {
-        oldBank.currentBalance += voucher.voucherType === 'Payment' ? voucher.totalAmount : -voucher.totalAmount;
-        await oldBank.save({ session });
-      }
-    }
-
-    const updateData = {
-      ...(date && { date: parsedDate }),
-      ...(reference !== undefined && { reference }),
-      ...(voucherType && { voucherType }),
-      ...(paymentMethod && { paymentMethod }),
-      ...(paymentMethod === 'Bank' && bankAccount && { bankAccount }),
-      ...(paymentMethod === 'Bank' && transactionNumber !== undefined && { transactionNumber }),
-      ...(paymentMethod === 'Bank' && clearanceDate && { clearanceDate }),
-      ...(paymentMethod === 'Cash' && cashAccount && { cashAccount }),
-      ...(party && { party }),
-      ...(party === 'Customer' && customer && { customer }),
-      ...(party === 'Supplier' && supplier && { supplier }),
-      ...(party === 'Other' && { customer: null, supplier: null }),
-      ...(description !== undefined && { description }),
-      ...(accounts && { accounts }),
-      ...(totalAmount && { totalAmount }),
-      ...(status && { status })
-    };
-
-    Object.assign(voucher, updateData);
     await voucher.save({ session });
-
-    if (status === "Posted") {
-      if (paymentMethod === "Cash" && voucherType === "Payment") {
-        if (cashChartAccount.currentBalance < totalAmount) {
-          throw new Error(errorMessages.insufficientBalance);
-        }
-      } else if (paymentMethod === "Bank" && voucherType === "Payment") {
-        if (bank.currentBalance < totalAmount) {
-          throw new Error(errorMessages.insufficientBalance);
-        }
-      }
-
-      const journalAccounts = [];
-      if (paymentMethod === "Cash") {
-        journalAccounts.push({
-          account: cashChartAccount._id,
-          debitAmount: voucherType === "Receipt" ? totalAmount : 0,
-          creditAmount: voucherType === "Payment" ? totalAmount : 0,
-        });
-      } else {
-        journalAccounts.push({
-          account: bank.chartAccountId,
-          debitAmount: voucherType === "Receipt" ? totalAmount : 0,
-          creditAmount: voucherType === "Payment" ? totalAmount : 0,
-        });
-      }
-
-      for (const acc of accounts) {
-        const chartAccount = await ChartAccount.findById(acc.chartAccount).session(session);
-        journalAccounts.push({
-          account: acc.chartAccount,
-          debitAmount: voucherType === "Payment" ? acc.amount : 0,
-          creditAmount: voucherType === "Receipt" ? acc.amount : 0,
-        });
-        if (['Income', 'Expense'].includes(chartAccount.group)) {
-          await updateRetainedEarnings(acc.chartAccount, acc.amount, chartAccount.group, session);
-        }
-      }
-
-      const journal = new JournalVoucher({
-        date: parsedDate,
-        reference: `TXN-${voucher.voucherNumber}`,
-        description: `${voucherType || voucher.voucherType} for ${party || voucher.party}`,
-        status: "Posted",
-        accounts: journalAccounts,
-      });
-      await journal.save({ session });
-
-      if (paymentMethod === "Cash") {
-        if (voucherType === "Payment") {
-          cashChartAccount.currentBalance -= totalAmount;
-        } else {
-          cashChartAccount.currentBalance += totalAmount;
-        }
-        await cashChartAccount.save({ session });
-      } else {
-        if (voucherType === "Payment") {
-          bank.currentBalance -= totalAmount;
-        } else {
-          bank.currentBalance += totalAmount;
-        }
-        await bank.save({ session });
-        if (bank.chartAccountId) {
-          const bankChartAccount = await ChartAccount.findById(bank.chartAccountId).session(session);
-          if (bankChartAccount) {
-            if (voucherType === "Payment") {
-              bankChartAccount.currentBalance -= totalAmount;
-            } else {
-              bankChartAccount.currentBalance += totalAmount;
-            }
-            await bankChartAccount.save({ session });
-          }
-        }
-      }
-
-      for (const acc of accounts) {
-        const chartAccount = await ChartAccount.findById(acc.chartAccount).session(session);
-        if (voucherType === "Payment") {
-          if (chartAccount.nature === "Debit") {
-            chartAccount.currentBalance += acc.amount;
-          } else {
-            chartAccount.currentBalance -= acc.amount;
-          }
-        } else {
-          if (chartAccount.nature === "Debit") {
-            chartAccount.currentBalance -= acc.amount;
-          } else {
-            chartAccount.currentBalance += acc.amount;
-          }
-        }
-        await chartAccount.save({ session });
-      }
-
-      await updatePartyTransactionHistory(voucher, session);
-    }
 
     // Fix: Pass document as an array for AuditLog.create
     await AuditLog.create([{
       action: 'update',
       entity: 'TransactionVoucher',
       entityId: voucher._id,
-      changes: sanitizedBody,
+      changes: status ? { status } : {},
       timestamp: new Date()
     }], { session });
 
@@ -654,4 +405,24 @@ const update = async (req, res) => {
   }
 };
 
-module.exports = { add, view, update };
+const remove = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { id } = req.params;
+    console.log(`Removing voucher with ID: ${id}`);
+
+    await TransactionVoucher.findByIdAndDelete(id).session(session);
+
+
+    await session.commitTransaction();
+    res.status(200).json({ success: true, message: 'Invoice deleted successfully' });
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
+  }
+};
+
+module.exports = { add, view, update, remove };

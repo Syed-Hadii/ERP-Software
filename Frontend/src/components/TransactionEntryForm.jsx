@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Wrapper from "../utils/wrapper";
-import logo_light from "../assets/logo-light.png";
 import { BASE_URL } from "../config/config";
 import { FormField, AccountEntry } from "../components/SharedComponents";
+import PrintVoucher from "./PrintVoucher";
+import { format, parse } from "date-fns";
 
 const TransactionEntryForm = ({ voucherType = "Payment" }) => {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
     description: "",
     totalAmount: 0,
     status: "Posted",
-    accounts: [{ chartAccount: "", amount: "", narration: "" }],
+    entries: [{ chartAccount: "", amount: "", narration: "" }],
     inputValues: [""],
   });
 
@@ -52,10 +53,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
 
   const fetchData = async (url, setter, errorMessage, loadingSetter) => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await Wrapper.axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await Wrapper.axios.get(url);
       setter(response.data.data || response.data.bankList || []);
     } catch (error) {
       console.error(error);
@@ -67,25 +65,16 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
 
   const fetchCashAccounts = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const cashParentResponse = await Wrapper.axios.get(
-        `${BASE_URL}/chartaccount/get-cash?name=Cash&group=Assets`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const cashParent = cashParentResponse.data.data[0];
-      if (!cashParent) {
-        Wrapper.toast.warn("Cash parent account not found. Please create one.");
+      const res = await Wrapper.axios.get(`${BASE_URL}/chartaccount/get-cash`);
+      console.log("Cash Accounts Response:", res);
+      const cashAccountsList = res.data.data || [];
+
+      if (cashAccountsList.length === 0) {
+        Wrapper.toast.warn("No cash accounts found.");
         setCashAccounts([]);
         return;
       }
-      const childrenResponse = await Wrapper.axios.get(
-        `${BASE_URL}/chartaccount/get?parentAccount=${cashParent._id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const cashAccountsList =
-        childrenResponse.data.data.length > 0
-          ? childrenResponse.data.data
-          : [cashParent];
+
       setCashAccounts(cashAccountsList);
       setFormData((prev) => ({
         ...prev,
@@ -149,7 +138,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
 
   const handleAccountChange = (index, e) => {
     const { name, value } = e.target;
-    const updatedAccounts = [...formData.accounts];
+    const updatedAccounts = [...formData.entries];
     const updatedInputValues = [...formData.inputValues];
     if (name === "amount") {
       updatedInputValues[index] = value.replace(/,/g, "");
@@ -158,7 +147,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
     }
     setFormData((prev) => ({
       ...prev,
-      accounts: updatedAccounts,
+      entries: updatedAccounts,
       inputValues: updatedInputValues,
     }));
   };
@@ -166,13 +155,13 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
   const handleAmountBlur = (index) => {
     const rawValue = formData.inputValues[index];
     const parsedValue = parseFloat(rawValue.replace(/,/g, ""));
-    const updatedAccounts = [...formData.accounts];
+    const updatedAccounts = [...formData.entries];
     const updatedInputValues = [...formData.inputValues];
     if (!isNaN(parsedValue) && parsedValue >= 0) {
       updatedAccounts[index].amount = parsedValue;
       setFormData((prev) => ({
         ...prev,
-        accounts: updatedAccounts,
+        entries: updatedAccounts,
         totalAmount: updatedAccounts.reduce(
           (sum, acc) => sum + (parseFloat(acc.amount) || 0),
           0
@@ -183,7 +172,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
       updatedAccounts[index].amount = "";
       setFormData((prev) => ({
         ...prev,
-        accounts: updatedAccounts,
+        entries: updatedAccounts,
         inputValues: updatedInputValues,
         totalAmount: updatedAccounts.reduce(
           (sum, acc) => sum + (parseFloat(acc.amount) || 0),
@@ -196,8 +185,8 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
   const addAccountRow = () => {
     setFormData((prev) => ({
       ...prev,
-      accounts: [
-        ...prev.accounts,
+      entries: [
+        ...prev.entries,
         { chartAccount: "", amount: "", narration: "" },
       ],
       inputValues: [...prev.inputValues, ""],
@@ -205,13 +194,13 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
   };
 
   const removeAccountRow = (index) => {
-    const updatedAccounts = formData.accounts.filter((_, i) => i !== index);
+    const updatedAccounts = formData.entries.filter((_, i) => i !== index);
     const updatedInputValues = formData.inputValues.filter(
       (_, i) => i !== index
     );
     setFormData((prev) => ({
       ...prev,
-      accounts: updatedAccounts,
+      entries: updatedAccounts,
       inputValues: updatedInputValues,
       totalAmount: updatedAccounts.reduce(
         (sum, acc) => sum + (parseFloat(acc.amount) || 0),
@@ -232,7 +221,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
       bankAccount,
       transactionNumber,
       clearanceDate,
-      accounts,
+      entries,
     } = formData;
 
     if (!date || !party || !totalAmount) {
@@ -280,13 +269,13 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
       return false;
     }
 
-    const accountIds = accounts.map((acc) => acc.chartAccount);
+    const accountIds = entries.map((acc) => acc.chartAccount);
     if (new Set(accountIds).size !== accountIds.length) {
       Wrapper.toast.error("Duplicate accounts are not allowed.");
       return false;
     }
 
-    for (const entry of accounts) {
+    for (const entry of entries) {
       if (!entry.chartAccount || !entry.amount || entry.amount <= 0) {
         Wrapper.toast.error(
           "Please complete all account entries with valid accounts and amounts."
@@ -295,7 +284,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
       }
     }
 
-    const accountsTotal = accounts.reduce(
+    const accountsTotal = entries.reduce(
       (sum, acc) => sum + parseFloat(acc.amount || 0),
       0
     );
@@ -323,13 +312,14 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
       customer: formData.party === "Customer" ? formData.customer : undefined,
       supplier: formData.party === "Supplier" ? formData.supplier : undefined,
       description: formData.description || undefined,
-      accounts: formData.accounts.map((entry) => ({
+      entries: formData.entries.map((entry) => ({
         chartAccount: entry.chartAccount,
         amount: parseFloat(entry.amount),
         narration: entry.narration || undefined,
       })),
       totalAmount: parseFloat(formData.totalAmount),
       status: formData.status,
+      isBatch: true,
     };
 
     if (formData.paymentMethod === "Cash") {
@@ -344,14 +334,21 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
     try {
       const response = await Wrapper.axios.post(
         `${BASE_URL}/transaction-entry/add`,
-        submissionData,
-        {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }
+        submissionData
       );
       if (response.data.success) {
         Wrapper.toast.success(`${voucherType} Entry Created Successfully!`);
-        setVoucherDetails(response.data.data);
+        setVoucherDetails({
+          ...response.data.data,
+          customer:
+            formData.party === "Customer"
+              ? customers.find((c) => c._id === formData.customer)
+              : undefined,
+          supplier:
+            formData.party === "Supplier"
+              ? suppliers.find((s) => s._id === formData.supplier)
+              : undefined,
+        });
         setIsModalOpen(true);
         setFormData({
           date: new Date().toISOString().split("T")[0],
@@ -368,7 +365,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
           description: "",
           totalAmount: 0,
           status: "Posted",
-          accounts: [{ chartAccount: "", amount: "", narration: "" }],
+          entries: [{ chartAccount: "", amount: "", narration: "" }],
           inputValues: [""],
         });
       } else {
@@ -395,32 +392,6 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePrint = () => {
-    const printContent = document.getElementById("printArea").innerHTML;
-    const printWindow = window.open("", "_blank");
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${voucherType} Entry</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #e0e0e0; padding: 8px; }
-            .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-            .section { margin-bottom: 20px; }
-            .total { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          ${printContent}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
-    printWindow.close();
   };
 
   return (
@@ -464,7 +435,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
           <Wrapper.Button
             startIcon={<Wrapper.ArrowBackIcon />}
             variant="outlined"
-            sx={{ borderRadius: "4px", textTransform: "none", fontWeight: 500 }}
+            color="inherit"
           >
             Back to {voucherType}s
           </Wrapper.Button>
@@ -596,7 +567,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
               mb: 3,
               backgroundColor: "#fff",
               borderRadius: "6px",
-              border: `4px solid ${
+              borderLeft: `4px solid ${
                 voucherType === "Payment" ? "#e74c3c" : "#2ecc71"
               }`,
             }}
@@ -673,15 +644,65 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
                     onChange={handleInputChange}
                     required
                   />
-                  <FormField
-                    label="Clearance Date"
-                    name="clearanceDate"
-                    type="date"
-                    value={formData.clearanceDate}
-                    onChange={handleInputChange}
-                    required
-                    inputProps={{ min: formData.date }}
-                  />
+                  <Wrapper.Grid item xs={12} sm={6} md={6}>
+                    <Wrapper.LocalizationProvider
+                      dateAdapter={Wrapper.AdapterDateFns}
+                    >
+                      <Wrapper.DatePicker
+                        label="Clearance Date"
+                        format="dd/MM/yyyy"
+                        value={
+                          formData.clearanceDate
+                            ? parse(
+                                formData.clearanceDate,
+                                "dd/MM/yyyy",
+                                new Date()
+                              )
+                            : null
+                        }
+                        onChange={(date) => {
+                          if (date && !isNaN(date)) {
+                            const formatted = format(date, "dd/MM/yyyy");
+                            setFormData((prev) => ({
+                              ...prev,
+                              clearanceDate: formatted,
+                            }));
+                          } else {
+                            setFormData((prev) => ({
+                              ...prev,
+                              clearanceDate: "",
+                            }));
+                          }
+                        }}
+                        slotProps={{
+                          textField: {
+                            fullWidth: true,
+                            required: true,
+                            size: "small",
+                            InputLabelProps: { shrink: true },
+                            sx: {
+                              "& .MuiOutlinedInput-root": {
+                                "& fieldset": { borderColor: "#d1d5db" },
+                                "&:hover fieldset": { borderColor: "#9ca3af" },
+                                "&.Mui-focused fieldset": {
+                                  borderColor: "#16a34a",
+                                },
+                                fontSize: "0.875rem",
+                              },
+                              "& .MuiInputLabel-root": {
+                                color: "#6b7280",
+                                fontSize: "0.875rem",
+                              },
+                              "& .MuiInputLabel-root.Mui-focused": {
+                                color: "#16a34a",
+                              },
+                            },
+                          },
+                        }}
+                        minDate={parse(formData.date, "yyyy-MM-dd", new Date())}
+                      />
+                    </Wrapper.LocalizationProvider>
+                  </Wrapper.Grid>
                 </>
               )}
               <Wrapper.Grid item xs={12}>
@@ -691,7 +712,7 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
                 >
                   Account Entries
                 </Wrapper.Typography>
-                {formData.accounts.map((entry, index) => (
+                {formData.entries.map((entry, index) => (
                   <AccountEntry
                     key={index}
                     index={index}
@@ -771,17 +792,12 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
           </Wrapper.Paper>
 
           <Wrapper.Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              mt: 4,
-              gap: 2,
-            }}
+            sx={{ display: "flex", justifyContent: "flex-start", gap: 2 }}
           >
             <Wrapper.Button
               variant="outlined"
               color="inherit"
-              sx={{ flex: 1, py: 1.2, textTransform: "none", fontWeight: 500 }}
+              sx={{ textTransform: "none" }}
               onClick={() =>
                 navigate(
                   voucherType === "Payment"
@@ -795,16 +811,8 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
             <Wrapper.Button
               type="submit"
               variant="contained"
-              color="primary"
+              color="success"
               disabled={loading}
-              sx={{
-                flex: 2,
-                py: 1.2,
-                textTransform: "none",
-                fontWeight: 500,
-                bgcolor: "#2c3e50",
-                "&:hover": { bgcolor: "#1a252f" },
-              }}
               startIcon={
                 loading ? (
                   <Wrapper.CircularProgress size={20} color="inherit" />
@@ -818,291 +826,14 @@ const TransactionEntryForm = ({ voucherType = "Payment" }) => {
           </Wrapper.Box>
         </Wrapper.Box>
       </form>
-
-      <Wrapper.Dialog
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: "8px", overflow: "hidden" } }}
-      >
-        <Wrapper.DialogTitle sx={{ p: 0 }}>
-          <Wrapper.Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              p: 2,
-              bgcolor: "#2c3e50",
-              color: "white",
-            }}
-          >
-            <Wrapper.Typography variant="h6" sx={{ fontWeight: 500 }}>
-              {voucherType} Entry
-            </Wrapper.Typography>
-            <img
-              src={logo_light || "/placeholder.svg"}
-              alt="Software Logo"
-              style={{ height: "36px" }}
-            />
-          </Wrapper.Box>
-        </Wrapper.DialogTitle>
-        <Wrapper.DialogContent dividers>
-          {voucherDetails && (
-            <Wrapper.Box id="printArea" sx={{ p: 2 }}>
-              <Wrapper.Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  mb: 3,
-                  pb: 2,
-                  borderBottom: "1px dashed #e0e0e0",
-                }}
-              >
-                <Wrapper.Box>
-                  <Wrapper.Typography
-                    variant="h6"
-                    sx={{ fontWeight: 600, color: "#2c3e50" }}
-                  >
-                    {voucherDetails.voucherType} Entry
-                  </Wrapper.Typography>
-                  <Wrapper.Typography variant="body2" color="textSecondary">
-                    Transaction Entry
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Box sx={{ textAlign: "right" }}>
-                  <Wrapper.Typography variant="body2" color="default">
-                    <strong>Entry Number:</strong>{" "}
-                    {voucherDetails.voucherNumber || "—"}
-                  </Wrapper.Typography>
-                  <Wrapper.Typography variant="body2" color="default">
-                    <strong>Date:</strong>{" "}
-                    {new Date(voucherDetails.date).toLocaleDateString("en-GB", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
-                  </Wrapper.Typography>
-                  <Wrapper.Typography variant="body2" color="default">
-                    <strong>Ref:</strong> {voucherDetails.reference || ""}
-                  </Wrapper.Typography>
-                  <Wrapper.Typography variant="body2" color="default">
-                    <strong>Status:</strong> {voucherDetails.status}
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-              </Wrapper.Box>
-              <Wrapper.Paper
-                elevation={0}
-                sx={{
-                  mb: 3,
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "6px",
-                  overflow: "hidden",
-                }}
-              >
-                <Wrapper.Box sx={{ bgcolor: "#f8f9fa", p: 2 }}>
-                  <Wrapper.Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: "600", color: "#2c3e50" }}
-                  >
-                    Transaction Details
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Table>
-                  <Wrapper.TableBody>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell sx={{ width: "40%" }}>
-                        <strong>Party</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        {voucherDetails.party === "Customer"
-                          ? customers.find(
-                              (c) => c._id === voucherDetails.customer
-                            )?.name || "—"
-                          : voucherDetails.party === "Supplier"
-                          ? suppliers.find(
-                              (s) => s._id === voucherDetails.supplier
-                            )?.name || "—"
-                          : voucherDetails.party || "—"}
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell>
-                        <strong>{voucherType} Method</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        {voucherDetails.paymentMethod}
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                    {voucherDetails.paymentMethod === "Cash" && (
-                      <Wrapper.TableRow>
-                        <Wrapper.TableCell>
-                          <strong>Cash Account</strong>
-                        </Wrapper.TableCell>
-                        <Wrapper.TableCell align="right">
-                          {cashAccounts.find(
-                            (acc) => acc._id === voucherDetails.cashAccount
-                          )?.name || "—"}
-                        </Wrapper.TableCell>
-                      </Wrapper.TableRow>
-                    )}
-                    {voucherDetails.paymentMethod === "Bank" && (
-                      <>
-                        <Wrapper.TableRow>
-                          <Wrapper.TableCell>
-                            <strong>Bank Account</strong>
-                          </Wrapper.TableCell>
-                          <Wrapper.TableCell align="right">
-                            {bankList.find(
-                              (acc) => acc._id === voucherDetails.bankAccount
-                            )?.accountTitle || "—"}
-                          </Wrapper.TableCell>
-                        </Wrapper.TableRow>
-                        <Wrapper.TableRow>
-                          <Wrapper.TableCell>
-                            <strong>Transaction Number</strong>
-                          </Wrapper.TableCell>
-                          <Wrapper.TableCell align="right">
-                            {voucherDetails.transactionNumber || ""}
-                          </Wrapper.TableCell>
-                        </Wrapper.TableRow>
-                        <Wrapper.TableRow>
-                          <Wrapper.TableCell>
-                            <strong>Clearance Date</strong>
-                          </Wrapper.TableCell>
-                          <Wrapper.TableCell align="right">
-                            {voucherDetails.clearanceDate
-                              ? new Date(
-                                  voucherDetails.clearanceDate
-                                ).toLocaleDateString("en-GB")
-                              : ""}
-                          </Wrapper.TableCell>
-                        </Wrapper.TableRow>
-                      </>
-                    )}
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell>
-                        <strong>Description</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        {voucherDetails.description || ""}
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                  </Wrapper.TableBody>
-                </Wrapper.Table>
-              </Wrapper.Paper>
-              <Wrapper.Paper
-                elevation={0}
-                sx={{
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "6px",
-                  overflow: "hidden",
-                }}
-              >
-                <Wrapper.Box
-                  sx={{
-                    bgcolor: "#eafaf1",
-                    p: 2,
-                    borderBottom: "1px solid #e0e0e0",
-                  }}
-                >
-                  <Wrapper.Typography
-                    variant="subtitle2"
-                    sx={{
-                      fontWeight: 600,
-                      color: voucherType === "Payment" ? "#e74c3c" : "#2ecc71",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                    }}
-                  >
-                    {voucherType === "Payment" ? (
-                      <Wrapper.CallReceivedIcon fontSize="small" />
-                    ) : (
-                      <Wrapper.CallMadeIcon fontSize="small" />
-                    )}
-                    Account Entries
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Table>
-                  <Wrapper.TableHead>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell>Chart of Account</Wrapper.TableCell>
-                      <Wrapper.TableCell>Narration</Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        Amount (PKR)
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                  </Wrapper.TableHead>
-                  <Wrapper.TableBody>
-                    {voucherDetails.accounts?.map((entry, index) => (
-                      <Wrapper.TableRow key={index}>
-                        <Wrapper.TableCell>
-                          {accountList.find(
-                            (acc) => acc._id === entry.chartAccount
-                          )?.name || "—"}
-                        </Wrapper.TableCell>
-                        <Wrapper.TableCell>
-                          {entry.narration || ""}
-                        </Wrapper.TableCell>
-                        <Wrapper.TableCell align="right">
-                          {formatNumber(entry.amount)}
-                        </Wrapper.TableCell>
-                      </Wrapper.TableRow>
-                    ))}
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell colSpan={2}>
-                        <strong>Total Amount</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        <strong>
-                          PKR {formatNumber(voucherDetails.totalAmount)}
-                        </strong>
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                  </Wrapper.TableBody>
-                </Wrapper.Table>
-              </Wrapper.Paper>
-              <Wrapper.Box
-                sx={{
-                  mt: 4,
-                  pt: 2,
-                  borderTop: "1px dashed #e0e0e0",
-                  textAlign: "center",
-                }}
-              >
-                <Wrapper.Typography variant="body2" color="textSecondary">
-                  This is a computer-generated document. No signature is
-                  required.
-                </Wrapper.Typography>
-              </Wrapper.Box>
-            </Wrapper.Box>
-          )}
-        </Wrapper.DialogContent>
-        <Wrapper.DialogActions sx={{ p: 2, justifyContent: "space-between" }}>
-          <Wrapper.Button
-            onClick={() => setIsModalOpen(false)}
-            color="inherit"
-            startIcon={<Wrapper.CloseIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Close
-          </Wrapper.Button>
-          <Wrapper.Button
-            onClick={handlePrint}
-            variant="contained"
-            color="primary"
-            startIcon={<Wrapper.PrintIcon />}
-            sx={{
-              textTransform: "none",
-              bgcolor: "#2c3e50",
-              "&:hover": { bgcolor: "#1a252f" },
-            }}
-          >
-            Print {voucherType}
-          </Wrapper.Button>
-        </Wrapper.DialogActions>
-      </Wrapper.Dialog>
+      {voucherDetails && (
+        <PrintVoucher
+          open={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          transaction={voucherDetails}
+          transactionType={voucherType}
+        />
+      )}
     </Wrapper.Box>
   );
 };

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Wrapper from "../../utils/wrapper";
 import PropTypes from "prop-types";
-import logo from "../../assets/erp.png"
+import logo from "../../assets/erp.png";
 
 const sections = [
   {
@@ -286,13 +286,13 @@ const sections = [
       },
       {
         label: "Payment Entry",
-        path: "/paymentvoucher",
+        path: "/payment-entry",
         icon: Wrapper.CallMadeIcon,
         roles: ["Admin", "Finance Manager"],
       },
       {
         label: "Receive Entry",
-        path: "/receivevoucher",
+        path: "/receipt-entry",
         icon: Wrapper.CallReceivedIcon,
         roles: ["Admin", "Finance Manager"],
       },

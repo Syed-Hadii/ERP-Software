@@ -11,9 +11,13 @@ const journalEntrySchema = new mongoose.Schema({
   date: { type: Date, required: true },
   reference: { type: String, trim: true },
   description: { type: String, trim: true },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  accounts: { type: [accountEntrySchema], },
+  status: { type: String, enum: ['Draft', 'Posted'], default: 'Draft' },
+  accounts: { type: [accountEntrySchema], validate: v => v.length >= 2 },
+  createdBy: { type: String, default: 'system' }
 }, { timestamps: true });
+
+journalEntrySchema.index({ reference: 1 });
+journalEntrySchema.index({ status: 1 });
 
 const JournalVoucher = mongoose.model('JournalVoucher', journalEntrySchema);
 module.exports = JournalVoucher;

@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
-const COALedger = require("../models/Finance/coaLedger");
-const ChartAccount = require("../models/Finance/chartAccountsModel");
+const COALedger = require("../models/coaLedger");
+const ChartAccount = require("../models/chartAccountsModel");
 
 const createCOALedgerEntry = async ({
     coaId,

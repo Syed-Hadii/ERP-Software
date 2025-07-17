@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
-const ChartAccount = require('../../models/Finance/chartAccountsModel.js');
+const ChartAccount = require('../../models/Finance/chartAccountsModel');
 const JournalVoucher = require('../../models/Finance/journalVoucherModel');
-const Period = require('../../models/Finance/periodModel.js');
-const AuditLog = require('../../models/Finance/auditLogModel.js');
-const errorMessages = require('../../utils/errorMessages.js');
+const TransactionVoucher = require('../../models/Finance/transactionEntry');
+const Period = require('../../models/Finance/periodModel');
+const AuditLog = require('../../models/Finance/auditLogModel');
+const errorMessages = require('../../utils/errorMessages');
 
 const closePeriod = async (req, res) => {
     const session = await mongoose.startSession();
@@ -15,137 +16,259 @@ const closePeriod = async (req, res) => {
         const endDate = new Date(periodEndDate);
         if (isNaN(endDate)) throw new Error(errorMessages.invalidDate);
 
-        // Check if period already closed
-        const existingPeriod = await Period.findOne({ endDate: endDate }).session(session);
-        if (existingPeriod && existingPeriod.status === 'closed') {
-            throw new Error(errorMessages.closedPeriod);
+        // Check for period overlap
+        const overlappingPeriod = await Period.findOne({
+            $or: [
+                {
+                    startDate: { $lte: endDate },
+                    endDate: { $gte: endDate }
+                },
+                {
+                    startDate: { $lte: new Date(endDate.getFullYear(), endDate.getMonth(), 1) },
+                    endDate: { $gte: new Date(endDate.getFullYear(), endDate.getMonth(), 1) }
+                }
+            ]
+        }).session(session);
+
+        if (overlappingPeriod) {
+            throw new Error('A period already exists that overlaps with the specified end date');
         }
 
-        // Generate trial balance
-        const trialBalance = await ChartAccount.aggregate([
-            { $group: { _id: '$group', totalBalance: { $sum: '$currentBalance' } } }
-        ]).session(session);
-
-        const incomeAccounts = await ChartAccount.find({ group: 'Income' }).session(session);
-        const expenseAccounts = await ChartAccount.find({ group: 'Expense' }).session(session);
-        const retainedEarnings = await ChartAccount.findOne({ category: 'Retained Earnings' }).session(session);
-        if (!retainedEarnings) throw new Error('Retained Earnings account not found');
+        // Fetch all chart accounts
+        const allAccounts = await ChartAccount.find().session(session);
 
         let totalIncome = 0;
         let totalExpense = 0;
-        const journalAccounts = [];
+        const trialBalance = {};
 
-        for (const account of incomeAccounts) {
-            const ledger = await getLedgerForAccount(account._id, null, endDate);
-            const balance = ledger.length > 0 ? ledger[ledger.length - 1].balance : account.openingBalance;
-            if (balance !== 0) {
-                totalIncome += balance;
-                journalAccounts.push({
-                    account: account._id,
-                    debitAmount: balance,
-                    creditAmount: 0,
-                    narration: `Closing ${account.name} for period ending ${endDate.toISOString().split('T')[0]}`,
-                });
-            }
+        // Find or create Retained Earnings account
+        let retainedEarningsAccount = await ChartAccount.findOne({
+            category: 'Retained Earnings',
+            group: 'Equity'
+        }).session(session);
+
+        if (!retainedEarningsAccount) {
+            retainedEarningsAccount = new ChartAccount({
+                code: `EQ-RE-${Date.now()}`, // Unique code for new account
+                name: 'Retained Earnings',
+                group: 'Equity',
+                category: 'Retained Earnings',
+                nature: 'Credit',
+                openingBalance: 0,
+                currentBalance: 0,
+                createdBy: 'system'
+            });
+            await retainedEarningsAccount.save({ session });
         }
 
-        for (const account of expenseAccounts) {
-            const ledger = await getLedgerForAccount(account._id, null, endDate);
+        // Update balances for each account
+        for (const account of allAccounts) {
+            const ledger = await getLedgerForAccount(account._id, null, endDate, session);
             const balance = ledger.length > 0 ? ledger[ledger.length - 1].balance : account.openingBalance;
-            if (balance !== 0) {
-                totalExpense += balance;
-                journalAccounts.push({
-                    account: account._id,
-                    debitAmount: 0,
-                    creditAmount: balance,
-                    narration: `Closing ${account.name} for period ending ${endDate.toISOString().split('T')[0]}`,
-                });
+
+            // Update account's current balance
+            account.currentBalance = balance;
+
+            // Reset Income and Expense accounts only
+            if (['Income', 'Expense'].includes(account.group)) {
+                account.currentBalance = 0;
             }
+
+            await account.save({ session });
+
+            // Update parent account balances if applicable
+            await account.calculateAndUpdateParentBalance(session);
+
+            // Build trial balance object
+            trialBalance[account.name] = balance;
+
+            // Compute income/expense for net income calculation
+            if (account.group === 'Income') totalIncome += balance;
+            else if (account.group === 'Expense') totalExpense += balance;
         }
 
+        // Calculate net income and update Retained Earnings
         const netIncome = totalIncome - totalExpense;
-        if (netIncome !== 0) {
-            journalAccounts.push({
-                account: retainedEarnings._id,
-                debitAmount: netIncome < 0 ? Math.abs(netIncome) : 0,
-                creditAmount: netIncome > 0 ? netIncome : 0,
-                narration: `Net ${netIncome > 0 ? 'profit' : 'loss'} for period ending ${endDate.toISOString().split('T')[0]}`,
-            });
-        }
+        retainedEarningsAccount.currentBalance = (retainedEarningsAccount.currentBalance || 0) + netIncome;
+        await retainedEarningsAccount.save({ session });
 
-        let journal;
-        if (journalAccounts.length > 0) {
-            journal = new JournalVoucher({
-                date: endDate,
-                reference: `CLOSING-${endDate.toISOString().split('T')[0]}`,
-                description: `Period closing for ${endDate.toISOString().split('T')[0]}`,
-                status: 'Posted',
-                accounts: journalAccounts,
-            });
-            await journal.save({ session });
-        }
+        // Update parent of Retained Earnings if it has one
+        await retainedEarningsAccount.calculateAndUpdateParentBalance(session);
 
-        // Create or update period
-        const period = existingPeriod || new Period({
+        // Update trial balance with final Retained Earnings balance
+        trialBalance[retainedEarningsAccount.name] = retainedEarningsAccount.currentBalance;
+
+        // Save closed period
+        const period = new Period({
             startDate: new Date(endDate.getFullYear(), endDate.getMonth(), 1),
             endDate,
-            status: 'closed'
+            status: 'closed',
+            trialBalance,
+            netIncome
         });
-        period.status = 'closed';
         await period.save({ session });
 
-        // Log audit trail
-        await AuditLog.create({
+        // Create audit log
+        await AuditLog.create([{
             action: 'create',
             entity: 'Period',
             entityId: period._id,
             changes: { periodEndDate, trialBalance, netIncome },
             timestamp: new Date()
-        }, { session });
+        }], { session });
+
+        // Calculate implied next period start date
+        const nextPeriodStart = new Date(endDate);
+        nextPeriodStart.setDate(endDate.getDate() + 1);
 
         await session.commitTransaction();
-        res.json({ success: true, message: 'Period closed successfully', data: { netIncome, trialBalance } });
+        res.json({
+            success: true,
+            message: 'Period closed successfully',
+            data: {
+                netIncome,
+                trialBalance,
+                nextPeriod: {
+                    status: 'open',
+                    startDate: nextPeriodStart,
+                    endDate: null
+                }
+            }
+        });
     } catch (error) {
         await session.abortTransaction();
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Error closing period:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to close period'
+        });
     } finally {
         session.endSession();
     }
 };
 
-// Helper function (unchanged)
-async function getLedgerForAccount(accountId, startDate, endDate) {
-    const journalQuery = { 'accounts.account': accountId, status: 'Posted', ...(startDate || endDate ? { date: { ...(startDate && { $gte: new Date(startDate) }), ...(endDate && { $lte: new Date(endDate) }) } } : {}) };
-    const transactionQuery = { $or: [{ 'accounts.chartAccount': accountId }, { cashAccount: accountId }], status: 'Posted', ...(startDate || endDate ? { date: { ...(startDate && { $gte: new Date(startDate) }), ...(endDate && { $lte: new Date(endDate) }) } } : {}) };
+// Helper function to calculate ledger for an account
+async function getLedgerForAccount(accountId, startDate, endDate, session) {
+    const account = await ChartAccount.findById(accountId).lean().session(session);
+    const group = account.group;
+    const opening = account.openingBalance || 0;
+
+    // Aggregate journal entries
+    const journalPipeline = [
+        {
+            $match: {
+                'accounts.account': accountId,
+                status: 'Posted',
+                ...(startDate || endDate ? {
+                    date: {
+                        ...(startDate && { $gte: new Date(startDate) }),
+                        ...(endDate && { $lte: new Date(endDate) })
+                    }
+                } : {})
+            }
+        },
+        { $unwind: '$accounts' },
+        {
+            $match: {
+                'accounts.account': accountId
+            }
+        },
+        {
+            $project: {
+                date: 1,
+                debit: '$accounts.debitAmount',
+                credit: '$accounts.creditAmount'
+            }
+        }
+    ];
+
+    // Aggregate transaction entries
+    const transactionPipeline = [
+        {
+            $match: {
+                $or: [
+                    { 'accounts.chartAccount': accountId },
+                    { cashAccount: accountId }
+                ],
+                status: 'Posted',
+                ...(startDate || endDate ? {
+                    date: {
+                        ...(startDate && { $gte: new Date(startDate) }),
+                        ...(endDate && { $lte: new Date(endDate) })
+                    }
+                } : {})
+            }
+        },
+        {
+            $lookup: {
+                from: 'chartaccounts',
+                localField: 'cashAccount',
+                foreignField: '_id',
+                as: 'cashAccountData'
+            }
+        },
+        {
+            $lookup: {
+                from: 'chartaccounts',
+                localField: 'accounts.chartAccount',
+                foreignField: '_id',
+                as: 'accountData'
+            }
+        },
+        { $unwind: '$accounts' },
+        {
+            $match: {
+                $or: [
+                    { 'accounts.chartAccount': accountId },
+                    { cashAccount: accountId }
+                ]
+            }
+        },
+        {
+            $project: {
+                date: 1,
+                voucherType: 1,
+                totalAmount: 1,
+                amount: '$accounts.amount',
+                isCashAccount: { $eq: ['$cashAccount', accountId] }
+            }
+        },
+        {
+            $group: {
+                _id: '$_id',
+                date: { $first: '$date' },
+                voucherType: { $first: '$voucherType' },
+                totalAmount: { $first: '$totalAmount' },
+                amount: { $first: '$amount' },
+                isCashAccount: { $first: '$isCashAccount' }
+            }
+        }
+    ];
+
     const [journalEntries, transactionEntries] = await Promise.all([
-        JournalVoucher.find(journalQuery).lean(),
-        TransactionVoucher.find(transactionQuery).populate('bankAccount cashAccount accounts.chartAccount').lean(),
+        JournalVoucher.aggregate(journalPipeline).session(session),
+        TransactionVoucher.aggregate(transactionPipeline).session(session)
     ]);
 
-    let runningBalance = (await ChartAccount.findById(accountId).lean()).openingBalance || 0;
+    let runningBalance = opening;
     const ledger = [];
 
+    // Process journal entries
     for (const entry of journalEntries) {
-        for (const line of entry.accounts) {
-            if (line.account.toString() === accountId.toString()) {
-                const debit = line.debitAmount || 0;
-                const credit = line.creditAmount || 0;
-                runningBalance += (['Assets', 'Expense'].includes((await ChartAccount.findById(accountId)).group) ? debit - credit : credit - debit);
-                ledger.push({ date: entry.date, debit, credit, balance: runningBalance });
-            }
-        }
+        const debit = entry.debit || 0;
+        const credit = entry.credit || 0;
+        runningBalance += ['Assets', 'Expense'].includes(group) ? debit - credit : credit - debit;
+        ledger.push({ date: entry.date, debit, credit, balance: runningBalance });
     }
 
+    // Process transaction entries
     for (const txn of transactionEntries) {
-        const isCashAccount = txn.cashAccount && txn.cashAccount._id.toString() === accountId.toString();
-        for (const line of txn.accounts) {
-            if (line.chartAccount._id.toString() === accountId.toString() || isCashAccount) {
-                const debit = txn.voucherType === 'Receipt' && !isCashAccount ? line.amount : (txn.voucherType === 'Receipt' && isCashAccount ? txn.totalAmount : 0);
-                const credit = txn.voucherType === 'Payment' && !isCashAccount ? line.amount : (txn.voucherType === 'Payment' && isCashAccount ? txn.totalAmount : 0);
-                runningBalance += (['Assets', 'Expense'].includes((await ChartAccount.findById(accountId)).group) ? debit - credit : credit - debit);
-                ledger.push({ date: txn.date, debit, credit, balance: runningBalance });
-            }
-        }
+        const debit = txn.isCashAccount && txn.voucherType === 'Receipt' ? txn.totalAmount :
+            !txn.isCashAccount && txn.voucherType === 'Receipt' ? txn.amount : 0;
+        const credit = txn.isCashAccount && txn.voucherType === 'Payment' ? txn.totalAmount :
+            !txn.isCashAccount && txn.voucherType === 'Payment' ? txn.amount : 0;
+        runningBalance += ['Assets', 'Expense'].includes(group) ? debit - credit : credit - debit;
+        ledger.push({ date: txn.date, debit, credit, balance: runningBalance });
     }
 
     return ledger.sort((a, b) => new Date(a.date) - new Date(b.date));

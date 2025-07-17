@@ -1,85 +1,114 @@
 const mongoose = require("mongoose");
 const JournalVoucher = require("../../models/Finance/journalVoucherModel.js");
 const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
+const AuditLog = require("../../models/Finance/auditLogModel.js");
+const Period = require("../../models/Finance/periodModel.js");
+const { updateRetainedEarnings } = require("../utils/accounting.js");
+const errorMessages = require("../utils/errorMessages.js");
+const Joi = require('joi');
+const sanitize = require('mongo-sanitize');
+
+const journalSchema = Joi.object({
+  date: Joi.date().required().error(new Error(errorMessages.invalidDate)),
+  reference: Joi.string().max(50).optional(),
+  description: Joi.string().max(200).optional(),
+  accounts: Joi.array().min(2).items(
+    Joi.object({
+      account: Joi.string().required().error(new Error(errorMessages.invalidAccount)),
+      debitAmount: Joi.number().min(0).optional(),
+      creditAmount: Joi.number().min(0).optional(),
+      narration: Joi.string().max(200).optional()
+    })
+  ).required().error(new Error(errorMessages.missingFields)),
+  status: Joi.string().valid('Draft', 'Posted').default('Draft')
+});
 
 const add = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { date, reference, description, accounts } = req.body;
-    console.log(req.body)
-    if (!date || !accounts || !Array.isArray(accounts) || accounts.length < 2) {
-      throw new Error('Date and at least two accounts are required');
-    }
+    const { error } = journalSchema.validate(req.body);
+    if (error) throw new Error(error.message);
 
-    const accountIds = accounts.map((acc) => acc.account); // Changed to acc.account
+    const { date, reference, description, accounts, status } = req.body;
+    console.log("Received data:", req.body);
+    const parsedDate = new Date(date);
+
+    // Check for closed period
+    const closedPeriod = await Period.findOne({ endDate: { $gte: parsedDate }, status: 'closed' }).session(session);
+    if (closedPeriod) throw new Error(errorMessages.closedPeriod);
+
+    const accountIds = accounts.map((acc) => acc.account);
     if (new Set(accountIds).size !== accountIds.length) {
-      throw new Error("Duplicate accounts not allowed");
+      throw new Error(errorMessages.duplicateAccounts);
     }
 
     for (const acc of accounts) {
       if (!acc.account || (!acc.debitAmount && !acc.creditAmount) || (acc.debitAmount && acc.creditAmount)) {
-        throw new Error('Each account must have either debit or credit, not both or neither');
+        throw new Error(errorMessages.invalidAccount);
       }
     }
 
     const totalDebit = accounts.reduce((sum, acc) => sum + (acc.debitAmount || 0), 0);
     const totalCredit = accounts.reduce((sum, acc) => sum + (acc.creditAmount || 0), 0);
-    if (totalDebit !== totalCredit) {
-      throw new Error('Total debit must equal total credit');
-    } const chartAccounts = await ChartAccount.find({ _id: { $in: accountIds } }).session(session);
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      throw new Error(errorMessages.unbalancedEntry);
+    }
+
+    const chartAccounts = await ChartAccount.find({ _id: { $in: accountIds } }).session(session);
     if (chartAccounts.length !== accountIds.length) {
-      throw new Error('One or more chart accounts not found');
-    }    // Update account balances and handle retained earnings
-    for (const acc of accounts) {
-      const chartAccount = chartAccounts.find(ca => ca._id.toString() === acc.account.toString());
-      const isDebitNature = ['Assets', 'Expense'].includes(chartAccount.group);
-      const balanceChange = isDebitNature ?
-        (acc.debitAmount || 0) - (acc.creditAmount || 0) :
-        (acc.creditAmount || 0) - (acc.debitAmount || 0);
+      throw new Error(errorMessages.accountNotFound);
+    }
 
-      chartAccount.currentBalance += balanceChange;
-      await chartAccount.save({ session });
+    if (status === "Posted") {
+      for (const acc of accounts) {
+        const chartAccount = chartAccounts.find(ca => ca._id.toString() === acc.account.toString());
+        const isDebitNature = ['Assets', 'Expense'].includes(chartAccount.group);
+        const balanceChange = isDebitNature
+          ? (acc.debitAmount || 0) - (acc.creditAmount || 0)
+          : (acc.creditAmount || 0) - (acc.debitAmount || 0);
 
-      // Handle Income/Expense effect on Retained Earnings
-      if (['Income', 'Expense'].includes(chartAccount.group)) {
-        const retainedEarnings = await ChartAccount.findOne({
-          category: 'Retained Earnings'
-        }).session(session);
+        chartAccount.currentBalance += balanceChange;
+        await chartAccount.save({ session });
+        await chartAccount.calculateAndUpdateParentBalance(session);
 
-        if (retainedEarnings) {
-          let retainedEarningsChange = 0;
-
-          if (chartAccount.group === 'Income') {
-            // Income credited (increased) = Credit Retained Earnings
-            // Income debited (decreased) = Debit Retained Earnings
-            retainedEarningsChange = (acc.creditAmount || 0) - (acc.debitAmount || 0);
-          } else { // Expense
-            // Expense debited (increased) = Debit Retained Earnings
-            // Expense credited (decreased) = Credit Retained Earnings
-            retainedEarningsChange = (acc.creditAmount || 0) - (acc.debitAmount || 0);
-          }
-
-          retainedEarnings.currentBalance += retainedEarningsChange;
-          await retainedEarnings.save({ session });
+        if (['Income', 'Expense'].includes(chartAccount.group)) {
+          await updateRetainedEarnings(acc.account, balanceChange, chartAccount.group, session);
         }
       }
     }
 
     const journalEntry = new JournalVoucher({
-      date,
+      date: parsedDate,
       reference,
-      description,
-      accounts,
-      status: 'Posted'
+      description: description ? sanitize(description.trim()) : undefined,
+      accounts: accounts.map(acc => ({
+        account: acc.account,
+        debitAmount: acc.debitAmount || 0,
+        creditAmount: acc.creditAmount || 0,
+        narration: acc.narration ? sanitize(acc.narration.trim()) : undefined
+      })),
+      status: status || 'Draft',
     });
     await journalEntry.save({ session });
+
+    // Log audit trail
+    await AuditLog.create(
+      [{
+        action: 'create',
+        entity: 'JournalVoucher',
+        entityId: journalEntry._id,
+        changes: req.body,
+        timestamp: new Date()
+      }],
+      { session }
+    );
 
     await session.commitTransaction();
     res.status(201).json({ success: true, message: 'Journal entry created', data: journalEntry });
   } catch (error) {
     await session.abortTransaction();
-    res.status(500).json({ success: false, message: error.message });
+    res.status(400).json({ success: false, message: error.message });
   } finally {
     session.endSession();
   }
@@ -87,13 +116,13 @@ const add = async (req, res) => {
 
 const get = async (req, res) => {
   const { page = 1, limit = 10, search, startDate, endDate } = req.query;
-
+  const sanitizedSearch = sanitize(search);
   try {
     const query = {};
-    if (search) {
+    if (sanitizedSearch) {
       query.$or = [
-        { reference: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
+        { reference: { $regex: sanitizedSearch, $options: "i" } },
+        { description: { $regex: sanitizedSearch, $options: "i" } },
       ];
     }
     if (startDate || endDate) {
@@ -117,108 +146,76 @@ const get = async (req, res) => {
       data: entries,
     });
   } catch (error) {
-    console.error("Error fetching journal entries:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: "Error fetching journal entries.",
+      message: errorMessages.accountNotFound,
     });
   }
 };
 
 const update = async (req, res) => {
-  const { voucherId, date, reference, description, accounts } = req.body;
-
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const voucher = await JournalVoucher.findById(voucherId);
+    const { voucherId, status } = req.body;
+
+    const voucher = await JournalVoucher.findById(voucherId).session(session);
     if (!voucher) {
-      return res.status(404).json({ success: false, message: "Voucher not found" });
+      throw new Error('Voucher not found');
     }
 
-    // Validate accounts and amounts
-    if (accounts) {
-      for (const acc of accounts) {
-        if (!acc.account || (!acc.debitAmount && !acc.creditAmount) || (acc.debitAmount && acc.creditAmount)) {
-          return res.status(400).json({
-            success: false,
-            message: "Each account must have either debitAmount or creditAmount, not both or neither.",
-          });
-        }
-      }
-
-      // Check debit and credit balance
-      const totalDebit = accounts.reduce((sum, acc) => sum + (acc.debitAmount || 0), 0);
-      const totalCredit = accounts.reduce((sum, acc) => sum + (acc.creditAmount || 0), 0);
-      if (totalDebit !== totalCredit) {
-        return res.status(400).json({
-          success: false,
-          message: "Total debit amount must equal total credit amount.",
-        });
-      }      // Revert old balances
-      const oldAccounts = await ChartAccount.find({ _id: { $in: voucher.accounts.map((a) => a.account) } });
-      for (const acc of voucher.accounts) {
-        const chartAccount = oldAccounts.find((ca) => ca._id.toString() === acc.account.toString());
-        const isDebitNature = ['Assets', 'Expense'].includes(chartAccount.group);
-        const balanceChange = isDebitNature ?
-          (acc.debitAmount || 0) - (acc.creditAmount || 0) :
-          (acc.creditAmount || 0) - (acc.debitAmount || 0);
-
-        chartAccount.currentBalance -= balanceChange; // Revert the old balance change
-        await chartAccount.save({ session });
-      }
-
-      // Update new balances
-      const accountIds = accounts.map((acc) => acc.account);
-      const chartAccounts = await ChartAccount.find({ _id: { $in: accountIds } });
-      if (chartAccounts.length !== accountIds.length) {
-        return res.status(400).json({
-          success: false,
-          message: "One or more chart accounts not found.",
-        });
-      } for (const acc of accounts) {
-        const chartAccount = chartAccounts.find((ca) => ca._id.toString() === acc.account.toString());
-        const isDebitNature = ['Assets', 'Expense'].includes(chartAccount.group);
-        const balanceChange = isDebitNature ?
-          (acc.debitAmount || 0) - (acc.creditAmount || 0) :
-          (acc.creditAmount || 0) - (acc.debitAmount || 0);
-
-        chartAccount.currentBalance += balanceChange;
-        await chartAccount.save({ session });
-      }
+    if (voucher.status === 'Posted' && status === 'Draft') {
+      throw new Error('Cannot change Posted voucher to Draft');
     }
 
-    // Update voucher
-    voucher.date = date || voucher.date;
-    voucher.reference = reference || voucher.reference;
-    voucher.description = description || voucher.description;
-    if (accounts) voucher.accounts = accounts;
 
-    await voucher.save();
 
+    // Update voucher 
+    voucher.status = status || voucher.status;
+
+    // If changing to Posted, post the journal entries
+    if (status === 'Posted' && voucher.status !== 'Posted') {
+      // Add your posting logic here (similar to purchase invoice)
+      // This should create journal entries, update balances, etc.
+    }
+
+    // Log audit trail
+    await AuditLog.create({
+      action: 'update',
+      entity: 'JournalVoucher',
+      entityId: voucher._id,
+      changes: req.body,
+      timestamp: new Date()
+    }, { session });
+
+    await session.commitTransaction();
     res.status(200).json({
       success: true,
-      message: "Voucher updated successfully",
+      message: 'Voucher updated successfully',
       data: voucher,
     });
   } catch (error) {
-    console.error("Error updating voucher:", error);
-    res.status(500).json({
+    await session.abortTransaction();
+    res.status(400).json({
       success: false,
-      message: "Error updating voucher",
-      error: error.message,
+      message: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 
 const remove = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const { voucherId } = req.body;
-    const voucher = await JournalVoucher.findById(voucherId);
+    const { voucherId } = req.params;
+    const voucher = await JournalVoucher.findById(voucherId).session(session);
     if (!voucher) {
-      return res.status(404).json({ success: false, message: "Voucher not found" });
+      throw new Error('Voucher not found');
     }
 
-    // Revert account balances
-    const chartAccounts = await ChartAccount.find({ _id: { $in: voucher.accounts.map((a) => a.account) } });
+    const chartAccounts = await ChartAccount.find({ _id: { $in: voucher.accounts.map((a) => a.account) } }).session(session);
     for (const acc of voucher.accounts) {
       const chartAccount = chartAccounts.find((ca) => ca._id.toString() === acc.account.toString());
       const amount = acc.debitAmount || acc.creditAmount;
@@ -228,22 +225,36 @@ const remove = async (req, res) => {
       } else if (chartAccount.nature === "Credit") {
         chartAccount.currentBalance -= isDebit ? -amount : amount;
       }
-      await chartAccount.save();
+      await chartAccount.save({ session });
+      if (['Income', 'Expense'].includes(chartAccount.group)) {
+        await updateRetainedEarnings(acc.account, -amount, chartAccount.group, session);
+      }
     }
 
-    await JournalVoucher.findByIdAndDelete(voucherId);
+    // Log audit trail
+    await AuditLog.create({
+      action: 'delete',
+      entity: 'JournalVoucher',
+      entityId: voucher._id,
+      changes: { voucherId },
+      timestamp: new Date()
+    }, { session });
 
+    await JournalVoucher.findByIdAndDelete(voucherId).session(session);
+
+    await session.commitTransaction();
     res.status(200).json({
       success: true,
-      message: "Voucher deleted successfully",
+      message: 'Voucher deleted successfully',
     });
   } catch (error) {
-    console.error("Error deleting voucher:", error);
-    res.status(500).json({
+    await session.abortTransaction();
+    res.status(400).json({
       success: false,
-      message: "Error deleting voucher",
-      error: error.message,
+      message: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 

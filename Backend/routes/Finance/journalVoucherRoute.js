@@ -5,7 +5,7 @@ const journalVoucherRouter = express.Router();
 journalVoucherRouter
     .post("/add", add)
     .get("/get", get)
-    .delete("/delete", remove)
+    .delete("/delete/:id", remove)
     .put("/update", update);
 
 module.exports = journalVoucherRouter;

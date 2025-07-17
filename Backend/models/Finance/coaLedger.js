@@ -28,8 +28,8 @@ const coaLedgerSchema = new mongoose.Schema({
   },
   sourceType: {
     type: String,
-    enum: ['Sale Invoice', 'Purchase Invoice', 'Payment Voucher', 'Journal Entry', 'Opening Balance', 'Credit Note', 'Debit Note'],
-    required: true
+    enum: ['Sales Invoice', 'Purchase Invoice', 'Payment Voucher', 'Journal Entry', 'Batch Transaction', 'Opening Balance', 'Credit Note', 'Debit Note'],
+    // required: true
   },
   sourceId: {
     type: mongoose.Schema.Types.ObjectId,

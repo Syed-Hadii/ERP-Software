@@ -4,6 +4,7 @@ const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
 const TransactionVoucher = require("../../models/Finance/transactionEntry.js");
 const JournalVoucher = require('../../models/Finance/journalVoucherModel.js');
 
+
 const save = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -36,7 +37,9 @@ const save = async (req, res) => {
       openingBalance: openingBalance || 0,
       currentBalance: openingBalance || 0,
     });
-    await childAccount.save({ session }); const newBank = new BankAccount({
+    await childAccount.save({ session });
+
+    const newBank = new BankAccount({
       accountTitle,
       bankName,
       accountNumber,
@@ -46,13 +49,8 @@ const save = async (req, res) => {
     });
     await newBank.save({ session });
 
-    // Create opening balance journal
-    if (openingBalance !== 0) {
-      const equityAccount = await ChartAccount.findOne({ category: 'Retained Earnings' }).session(session);
-      if (!equityAccount) throw new Error('Retained Earnings account not found');
-
-     
-    }
+    // Update parent account balance
+    await bankParent.calculateAndUpdateParentBalance(session);
 
     await session.commitTransaction();
     res.json({ success: true, message: 'Bank account added', data: newBank });
@@ -63,9 +61,10 @@ const save = async (req, res) => {
     session.endSession();
   }
 };
+
 const deleteBank = async (req, res) => {
   try {
-    const { id } = req.params;  // Changed from req.body to req.params
+    const { id } = req.params;
     const deletedBank = await BankAccount.findByIdAndDelete(id);
 
     if (!deletedBank) {
@@ -111,7 +110,7 @@ const update = async (req, res) => {
       bankName,
       accountNumber,
       openingBalance: Number(openingBalance),
-      currentBalance: Number(openingBalance), // Update currentBalance as well
+      currentBalance: Number(openingBalance),
       ...(chartAccountId && { chartAccountId }),
     };
     const updatedBank = await BankAccount.findByIdAndUpdate(id, updatedData, {
@@ -168,7 +167,7 @@ const view = async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching bank account records", error: error.message });
   }
 };
-// Total Cash (from COA) and Bank (from BankAccount) summary
+
 const getBankLedger = async (req, res) => {
   try {
     const { id } = req.params;
@@ -223,22 +222,20 @@ const getBankLedger = async (req, res) => {
 
 const getCashAndBankSummary = async (req, res) => {
   try {
-    // Cash: COA accounts with group 'Assets' and name including 'cash'
     const cashAccounts = await ChartAccount.find({
       group: 'Assets',
       name: { $regex: /cash/i },
     }).lean();
     const cashLedgers = await Promise.all(cashAccounts.map(async acc => {
       const ledger = await getLedgerForAccount(acc._id);
-      return { name: acc.name, balance: ledger.length > 0 ? ledger[ledger.length - 1].balance : acc.openingBalance };
+      return { name: acc.name, balance: ledger.length > 0 ? ledger[ledger.length - 1].balance : acc.currentBalance };
     }));
     const totalCash = cashLedgers.reduce((sum, acc) => sum + acc.balance, 0);
 
-    // Bank: Use BankAccount model
-    const bankAccounts = await BankAccount.find().populate('accountTitle').populate('bankName').populate('chartAccountId').lean();
+    const bankAccounts = await BankAccount.find().populate('accountTitle').populate('bankName').populate('balance').lean();
     const bankLedgers = await Promise.all(bankAccounts.map(async bank => {
       const ledger = await getBankLedgerForAccount(bank._id);
-      return { bankName: bank.bankName, balance: ledger.length > 0 ? ledger[ledger.length - 1].balance : bank.openingBalance };
+      return { bankName: bank.bankName, balance: ledger.length > 0 ? ledger[ledger.length - 1].balance : bank.currentBalance, accountTitle: bank.accountTitle, };
     }));
     const totalBank = bankLedgers.reduce((sum, bank) => sum + bank.balance, 0);
 
@@ -253,7 +250,7 @@ const getCashAndBankSummary = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// Helper function for ledger calculation
+
 async function getLedgerForAccount(accountId) {
   const journalQuery = { 'accounts.account': accountId, status: 'Posted' };
   const transactionQuery = { $or: [{ 'accounts.chartAccount': accountId }, { cashAccount: accountId }], status: 'Posted' };
@@ -301,6 +298,7 @@ async function getBankLedgerForAccount(bankId) {
     return { date: voucher.date, debit: isReceipt ? amount : 0, credit: !isReceipt ? amount : 0, balance: runningBalance };
   });
 }
+
 module.exports = {
   save, deleteBank, deleteMultipleBanks, update, view, getCashAndBankSummary, getBankLedger
 };

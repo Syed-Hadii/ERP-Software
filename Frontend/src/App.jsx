@@ -37,7 +37,7 @@ import CropRequests from "./pages/Agriculture/CropRequests";
 import { HealthManagement } from "./pages/Cattle";
 import StockRequests from "./pages/Cattle/StockRequest";
 import CattleInventory from "./pages/Cattle/DairyInventory";
-import CattleFeedUsage from "./pages/Cattle/Cattle-FeedUsage"; 
+import CattleFeedUsage from "./pages/Cattle/Cattle-FeedUsage";
 import Employees from "./pages/HR/Employees";
 import EmployeeDetails from "./pages/HR/EmployeeDetails";
 import Attendance from "./pages/HR/Attendance";
@@ -57,6 +57,8 @@ import CattleWriteOff from "./pages/Cattle/CattleInventoryWrtieOff";
 import CropWriteOff from "./pages/Agriculture/CropInventoryWriteOff";
 import InventoryDashboard from "./pages/Inventory/InventoryDashboard";
 import AgricultureDashboard from "./pages/Agriculture/AgricultureDashboard";
+import BatchVoucherListPage from "./pages/Finance/BatchEntryList";
+import BatchEntryForm from "./pages/Finance/BatchEntryFormPage";
 
 const App = () => {
   return (
@@ -326,6 +328,7 @@ const App = () => {
               </ProtectedRoute>
             }
           />
+          {/* Inventory Section */}
           <Route
             path="/suppliers"
             element={
@@ -463,7 +466,7 @@ const App = () => {
             }
           />
           <Route
-            path="/paymentvoucher"
+            path="/payment-entry"
             element={
               <ProtectedRoute roles={["Admin", "Finance Manager"]}>
                 <PaymentVoucherList />
@@ -471,7 +474,7 @@ const App = () => {
             }
           />
           <Route
-            path="/paymentvoucher/paymentform"
+            path="/payment-entry/form"
             element={
               <ProtectedRoute roles={["Admin", "Finance Manager"]}>
                 <PaymentForm />
@@ -479,7 +482,7 @@ const App = () => {
             }
           />
           <Route
-            path="/receivevoucher"
+            path="/receipt-entry"
             element={
               <ProtectedRoute roles={["Admin", "Finance Manager"]}>
                 <RecieveVoucherList />
@@ -487,7 +490,7 @@ const App = () => {
             }
           />
           <Route
-            path="/receivevoucher/recieveform"
+            path="/receipt-entry/form"
             element={
               <ProtectedRoute roles={["Admin", "Finance Manager"]}>
                 <RecieveForm />
@@ -510,6 +513,8 @@ const App = () => {
               </ProtectedRoute>
             }
           />
+          <Route path="/batch-entry" element={<BatchVoucherListPage />} />
+          <Route path="/batch-entry/form" element={<BatchEntryForm />} />
           {/* Catch-all for invalid routes */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

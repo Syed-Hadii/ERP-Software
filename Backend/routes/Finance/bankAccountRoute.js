@@ -7,8 +7,8 @@ bankRouter
     .get("/get", view)
     .get("/summary", getCashAndBankSummary)
     .get("/ledger/:id", getBankLedger)
-    .delete("/:id", deleteBank)
-    .delete("/delete", deleteMultipleBanks)
+    .delete("delete/:id", deleteBank)
+    .delete("/delete-multiple", deleteMultipleBanks)
     .put("/update", update);
 
 module.exports = bankRouter;

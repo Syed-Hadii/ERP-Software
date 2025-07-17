@@ -1,8 +1,9 @@
 const mongoose = require('mongoose');
-const ChartAccount = require("../../models/Finance/chartAccountsModel.js");
-const TransactionVoucher = require("../../models/Finance/transactionEntry.js");
-const JournalVoucher = require("../../models/Finance/journalVoucherModel.js");
+const ChartAccount = require("../models/chartAccountsModel.js");
+const TransactionVoucher = require("../models/transactionEntry.js");
+const JournalVoucher = require("../models/journalVoucherModel.js");
 const sanitize = require('mongo-sanitize');
+const COALedger = require("../models/coaLedger");
 
 // Helper function to generate account code
 const generateAccountCode = async (group, category, session) => {
@@ -100,31 +101,7 @@ exports.createChartAccount = async (req, res) => {
       await updateParentBalance(parentAccount, session);
     }
 
-    // Create opening balance journal if needed for child accounts
-    if (openingBalance !== 0 && parentAccount) {
-      const equityAccount = await ChartAccount.findOne({ category: 'Owner\'s Equity' }).session(session);
-      if (!equityAccount) throw new Error('Owner\'s Equity account not found');
 
-      const journal = new JournalVoucher({
-        date: openingDate || new Date(),
-        reference: `OPENING-${sanitize(name)}`,
-        description: `Opening balance for ${sanitize(name)}`,
-        status: 'Posted',
-        accounts: [
-          {
-            account: newAccount._id,
-            debitAmount: ['Assets', 'Expense'].includes(group) ? openingBalance : 0,
-            creditAmount: ['Liabilities', 'Equity', 'Income'].includes(group) ? openingBalance : 0
-          },
-          {
-            account: equityAccount._id,
-            debitAmount: ['Liabilities', 'Equity', 'Income'].includes(group) ? openingBalance : 0,
-            creditAmount: ['Assets', 'Expense'].includes(group) ? openingBalance : 0
-          }
-        ],
-      });
-      await journal.save({ session });
-    }
 
     await session.commitTransaction();
     res.status(201).json({ success: true, message: 'Account created', data: newAccount });
@@ -199,7 +176,7 @@ exports.getAllAccounts = async (req, res) => {
     const accountsWithBalances = accounts.map(acc => ({
       ...acc,
       balance: acc.currentBalance,
-      formattedBalance: (acc.currentBalance || 0).toLocaleString('en-US', {
+      formattedBalance: acc.currentBalance.toLocaleString('en-US', {
         style: 'currency',
         currency: 'PKR'
       })
@@ -213,18 +190,17 @@ exports.getAllAccounts = async (req, res) => {
 
 exports.getCashAccounts = async (req, res) => {
   try {
-    const cashParent = await ChartAccount.findOne({ name: "Cash", group: "Assets" }).lean();
+    // Case-insensitive match for any account with "cash" in the name
+    const cashAccountsList = await ChartAccount.find({
+      name: { $regex: /cash/i }, group: 'Assets',
+    }).lean();
 
-    if (!cashParent) {
+    if (cashAccountsList.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Cash parent account not found. Please create one first.",
+        message: "No accounts found containing the word 'cash'.",
       });
     }
-
-    const children = await ChartAccount.find({ parentAccount: cashParent._id }).lean();
-
-    const cashAccountsList = children.length > 0 ? children : [cashParent];
 
     return res.status(200).json({
       success: true,
@@ -239,6 +215,7 @@ exports.getCashAccounts = async (req, res) => {
     });
   }
 };
+
 
 // Get a single account by ID
 exports.getAccountById = async (req, res) => {
@@ -285,28 +262,7 @@ exports.updateAccount = async (req, res) => {
     }
 
     // Update journal if opening balance changed
-    if (account.parentAccount && openingBalance !== undefined && openingBalance !== account.openingBalance) {
-      const equityAccount = await ChartAccount.findOne({ category: 'Owner\'s Equity' }).session(session);
-      if (!equityAccount) throw new Error('Owner\'s Equity account not found');
-
-      const journal = await JournalVoucher.findOne({ reference: `OPENING-${account.name}` }).session(session);
-      if (journal) {
-        journal.accounts = [
-          {
-            account: account._id,
-            debitAmount: ['Assets', 'Expense'].includes(account.group) ? openingBalance : 0,
-            creditAmount: ['Liabilities', 'Equity', 'Income'].includes(account.group) ? openingBalance : 0
-          },
-          {
-            account: equityAccount._id,
-            debitAmount: ['Liabilities', 'Equity', 'Income'].includes(account.group) ? openingBalance : 0,
-            creditAmount: ['Assets', 'Expense'].includes(account.group) ? openingBalance : 0
-          }
-        ];
-        await journal.save({ session });
-      }
-    }
-
+   
     await session.commitTransaction();
     res.status(200).json({ success: true, message: 'Account updated successfully', data: account });
   } catch (error) {
@@ -430,5 +386,111 @@ exports.getLedgerByCoaId = async (req, res) => {
     res.json({ success: true, account: chartAccount.name, openingBalance: chartAccount.openingBalance, ledger });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// New Updated Ledger Controller
+exports.getLedgerEntries = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+    console.log(`[${new Date().toISOString()}] getLedgerEntries: coaId=${id}, startDate=${startDate}, endDate=${endDate}`);
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid COA ID" });
+    }
+
+    // Fetch the account to check if it's a parent
+    const account = await ChartAccount.findById(id);
+    if (!account) {
+      return res.status(404).json({ success: false, message: "Account not found" });
+    }
+
+    // Check if the account has children
+    const childAccounts = await account.getChildAccounts();
+    const isParentAccount = childAccounts.length > 0;
+
+    let ledgerEntries = [];
+    let chartAccount = account;
+    let formattedEntries = [];
+
+    if (isParentAccount) {
+      // For parent account, fetch ledger entries for all child accounts
+      const childIds = childAccounts.map(child => child._id);
+      let query = { coaId: { $in: childIds } };
+      if (startDate || endDate) {
+        query.date = {};
+        if (startDate) query.date.$gte = new Date(startDate);
+        if (endDate) query.date.$lte = new Date(endDate);
+      }
+
+      ledgerEntries = await COALedger.find(query)
+        .populate('coaId', 'name')
+        .sort({ date: -1 })
+        .lean();
+
+      formattedEntries = ledgerEntries.map(entry => ({
+        id: entry._id,
+        date: entry.date,
+        debit: entry.debit,
+        credit: entry.credit,
+        balanceAfter: entry.balanceAfter,
+        reference: entry.reference,
+        sourceType: entry.sourceType,
+        sourceId: entry.sourceId,
+        description: entry.description,
+        createdBy: entry.createdBy,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        childAccountName: entry.coaId ? entry.coaId.name : 'Unknown', // Add child account name
+      }));
+    } else {
+      // For individual account, fetch its ledger entries
+      let query = { coaId: id };
+      if (startDate || endDate) {
+        query.date = {};
+        if (startDate) query.date.$gte = new Date(startDate);
+        if (endDate) query.date.$lte = new Date(endDate);
+      }
+
+      ledgerEntries = await COALedger.find(query)
+        .populate('coaId', 'name')
+        .sort({ date: -1 })
+        .lean();
+
+      formattedEntries = ledgerEntries.map(entry => ({
+        id: entry._id,
+        date: entry.date,
+        debit: entry.debit,
+        credit: entry.credit,
+        balanceAfter: entry.balanceAfter,
+        reference: entry.reference,
+        sourceType: entry.sourceType,
+        sourceId: entry.sourceId,
+        description: entry.description,
+        createdBy: entry.createdBy,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      }));
+    }
+
+    res.status(200).json({
+      success: true,
+      message: isParentAccount ? "Combined ledger entries for parent account retrieved successfully" : "Ledger entries retrieved successfully",
+      data: {
+        chartAccount: {
+          id: chartAccount._id,
+          name: chartAccount.name,
+          group: chartAccount.group,
+          openingBalance: chartAccount.openingBalance || 0,
+          currentBalance: chartAccount.currentBalance || 0,
+        },
+        entries: formattedEntries,
+        isParentAccount, // Flag to indicate if it's a parent account
+      },
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] getLedgerEntries: Error`, { error: error.message });
+    res.status(400).json({ success: false, message: error.message });
   }
 };

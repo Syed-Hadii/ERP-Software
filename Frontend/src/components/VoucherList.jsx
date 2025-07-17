@@ -4,30 +4,34 @@ import Wrapper from "../utils/wrapper";
 import DeleteModal from "./DeleteModal";
 import { BASE_URL } from "../config/config";
 import { VoucherTableRow } from "./SharedComponents";
+import PrintVoucher from "./PrintVoucher";
+import VoucherDetailsModal from "./Modals/VoucherDetailsModal";
 
-const VoucherList = ({ title, voucherType, createLink }) => {
+const VoucherList = ({ title, voucherType, createLink, isBatch = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState(null);
-  const [editableVoucher, setEditableVoucher] = useState({});
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedVoucherDetails, setSelectedVoucherDetails] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [voucherTypeFilter, setVoucherTypeFilter] = useState("");
   const [filteredVouchers, setFilteredVouchers] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [totalPages, setTotalPages] = useState(1);
   const [vouchers, setVouchers] = useState([]);
   const [openDelete, setOpenDelete] = useState(false);
-  const [deleteId, setDeleteId] = useState(null);
+  const [id, setId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [printOpen, setPrintOpen] = useState(false);
+  const [selectedVoucher, setSelectedVoucher] = useState(null);
 
   const formatNumber = (value) => {
     if (!value && value !== 0) return "0";
     return parseFloat(value).toLocaleString("en-US");
   };
 
-  // Debounce search term
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -35,23 +39,17 @@ const VoucherList = ({ title, voucherType, createLink }) => {
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
-  // Fetch vouchers
   const fetchVouchers = useCallback(async () => {
     setLoading(true);
     try {
-      const isJournal = voucherType === "Journal";
-      const endpoint = isJournal
-        ? "/journalvoucher/get"
-        : "/transactionEntry/get";
-      const queryParams = isJournal
-        ? `page=${currentPage}&limit=${pageSize}&search=${encodeURIComponent(
-            debouncedSearchTerm
-          )}`
-        : `page=${currentPage}&limit=${pageSize}&search=${encodeURIComponent(
-            debouncedSearchTerm
-          )}&voucherType=${voucherType}${
-            statusFilter ? `&status=${statusFilter}` : ""
-          }`;
+      const endpoint = isBatch ? "/batch-entry" : "/transaction-entry/get";
+      const queryParams = `page=${currentPage}&limit=${pageSize}&search=${encodeURIComponent(
+        debouncedSearchTerm
+      )}${voucherTypeFilter ? `&voucherType=${voucherTypeFilter}` : ""}${
+        statusFilter ? `&status=${statusFilter}` : ""
+      }${isBatch ? "" : "&isBatch=false"}`;
+
+      console.log("Fetching vouchers with query:", queryParams); // Debug query
 
       const response = await Wrapper.axios.get(
         `${BASE_URL}${endpoint}?${queryParams}`
@@ -73,131 +71,83 @@ const VoucherList = ({ title, voucherType, createLink }) => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearchTerm, voucherType, statusFilter]);
+  }, [
+    currentPage,
+    pageSize,
+    debouncedSearchTerm,
+    voucherTypeFilter,
+    statusFilter,
+    isBatch,
+  ]);
 
-  // Filter vouchers locally for instant UI updates
   useEffect(() => {
     const lowerCaseSearch = debouncedSearchTerm.toLowerCase();
     const filtered = vouchers.filter((voucher) =>
-      voucherType === "Journal"
-        ? [voucher.reference, voucher.description].some((field) =>
-            String(field || "")
-              .toLowerCase()
-              .includes(lowerCaseSearch)
-          )
-        : [voucher.voucherNumber, voucher.party, voucher.reference].some(
+      isBatch
+        ? [voucher.voucherNumber, voucher.reference, voucher.description].some(
             (field) =>
               String(field || "")
                 .toLowerCase()
                 .includes(lowerCaseSearch)
           )
+        : [
+            voucher.voucherNumber,
+            voucher.party,
+            voucher.reference,
+            voucher.description,
+          ].some((field) =>
+            String(field || "")
+              .toLowerCase()
+              .includes(lowerCaseSearch)
+          )
     );
     setFilteredVouchers(filtered);
-  }, [vouchers, debouncedSearchTerm, voucherType]);
+  }, [vouchers, debouncedSearchTerm, isBatch]);
 
   useEffect(() => {
     fetchVouchers();
   }, [fetchVouchers]);
 
-  const handleEditClick = (voucher) => {
-    setEditingId(voucher._id);
-    setEditableVoucher({
-      date: voucher.date,
-      reference: voucher.reference || "",
-      description: voucher.description || "",
-      ...(voucherType !== "Journal" && { status: voucher.status }),
-    });
-  };
-
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditableVoucher((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSaveEdit = async () => {
-    if (
-      voucherType !== "Journal" &&
-      editableVoucher.status === "Draft" &&
-      vouchers.find((v) => v._id === editingId)?.status === "Posted"
-    ) {
-      Wrapper.toast.error(
-        "Cannot change Posted voucher to Draft. Please reverse journal entries."
-      );
-      return;
-    }
-    if (
-      voucherType !== "Journal" &&
-      editableVoucher.status !== "Void" &&
-      vouchers.find((v) => v._id === editingId)?.status === "Void"
-    ) {
-      Wrapper.toast.error("Cannot change Void voucher to another status.");
-      return;
-    }
-
+  const handleStatusUpdate = async (voucherId, newStatus) => {
     setLoading(true);
     try {
-      const isJournal = voucherType === "Journal";
-      const endpoint = isJournal
-        ? "/journalvoucher/update"
-        : "/transactionEntry/update";
-      const payload = isJournal
-        ? {
-            voucherId: editingId,
-            date: editableVoucher.date,
-            reference: editableVoucher.reference,
-            description: editableVoucher.description,
-          }
-        : {
-            voucherId: editingId,
-            reference: editableVoucher.reference,
-            status: editableVoucher.status,
-          };
+      const endpoint = isBatch ? "/batch-entry" : "/transaction-entry/update";
 
       const response = await Wrapper.axios.put(
-        `${BASE_URL}${endpoint}`,
-        payload
+        `${BASE_URL}${endpoint}/${voucherId}`,
+        {
+          voucherId,
+          status: newStatus,
+        }
       );
+
       if (response.data.success) {
-        Wrapper.toast.success("Voucher updated successfully!");
-        fetchVouchers();
-        setEditingId(null);
-      } else {
-        Wrapper.toast.error(
-          response.data.message || "Failed to update voucher."
+        Wrapper.toast.success("Status updated successfully!");
+        setVouchers((prev) =>
+          prev.map((v) =>
+            v._id === voucherId ? { ...v, status: newStatus } : v
+          )
         );
+      } else {
+        Wrapper.toast.error(response.data.message || "Failed to update status");
       }
     } catch (error) {
-      console.error("Error updating voucher:", error);
+      console.error("Error updating status:", error);
       Wrapper.toast.error(
-        error.response?.data?.message?.includes("Insufficient")
-          ? error.response?.data?.message
-          : error.response?.data?.message || "Failed to update voucher."
+        error.response?.data?.message || "Failed to update status"
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditableVoucher({});
-  };
-
-  const handleDeleteClick = (id) => {
-    setOpenDelete(true);
-    setDeleteId(id);
-  };
-
   const handleDelete = async () => {
     setLoading(true);
     try {
-      const isJournal = voucherType === "Journal";
-      const endpoint = isJournal
-        ? "/journalvoucher/delete"
-        : "/transactionEntry/delete";
-      const response = await Wrapper.axios.delete(`${BASE_URL}${endpoint}`, {
-        data: { voucherId: deleteId },
-      });
+      const endpoint = isBatch ? `/batch-entry` : `/transaction-entry/delete`;
+      const response = await Wrapper.axios.delete(
+        `${BASE_URL}${endpoint}/${id}`
+      );
       if (response.data.success) {
         Wrapper.toast.success("Voucher deleted successfully!");
         fetchVouchers();
@@ -214,8 +164,13 @@ const VoucherList = ({ title, voucherType, createLink }) => {
     } finally {
       setLoading(false);
       setOpenDelete(false);
-      setDeleteId(null);
+      setId(null);
     }
+  };
+
+  const handlePrintClick = (voucher) => {
+    setSelectedVoucher(voucher);
+    setPrintOpen(true);
   };
 
   const handlePageChange = (event, value) => {
@@ -229,8 +184,9 @@ const VoucherList = ({ title, voucherType, createLink }) => {
     setCurrentPage(1);
   };
 
-  const handleExpand = (id) => {
-    setExpandedId(expandedId === id ? null : id);
+  const handleViewClick = (voucher) => {
+    setSelectedVoucherDetails(voucher);
+    setViewModalOpen(true);
   };
 
   return (
@@ -267,13 +223,8 @@ const VoucherList = ({ title, voucherType, createLink }) => {
         <Wrapper.NavLink to={createLink}>
           <Wrapper.Button
             variant="contained"
-            color="primary"
+            color="success"
             startIcon={<Wrapper.AddIcon />}
-            sx={{
-              bgcolor: "#2c3e50",
-              "&:hover": { bgcolor: "#1a252f" },
-              textTransform: "none",
-            }}
           >
             Create Voucher
           </Wrapper.Button>
@@ -285,7 +236,7 @@ const VoucherList = ({ title, voucherType, createLink }) => {
         sx={{ p: 3, mb: 4, borderRadius: "8px", border: "1px solid #e0e0e0" }}
       >
         <Wrapper.Grid container spacing={2}>
-          <Wrapper.Grid item xs={12} md={voucherType === "Journal" ? 9 : 6}>
+          <Wrapper.Grid item xs={12} md={isBatch ? 6 : 6}>
             <Wrapper.TextField
               fullWidth
               label="Search Vouchers"
@@ -294,32 +245,43 @@ const VoucherList = ({ title, voucherType, createLink }) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={
-                voucherType === "Journal"
-                  ? "Search by reference or description..."
-                  : "Search by voucher number, party, or reference..."
+                isBatch
+                  ? "Search by voucher number, reference, or description..."
+                  : "Search by voucher number, party, reference, or description..."
               }
               InputProps={{
                 endAdornment: <Wrapper.SearchIcon />,
               }}
             />
           </Wrapper.Grid>
-          {voucherType !== "Journal" && (
-            <Wrapper.Grid item xs={12} md={3}>
-              <Wrapper.FormControl fullWidth variant="outlined" size="small">
-                <Wrapper.InputLabel>Status</Wrapper.InputLabel>
-                <Wrapper.Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  label="Status"
-                >
-                  <Wrapper.MenuItem value="">All</Wrapper.MenuItem>
-                  <Wrapper.MenuItem value="Draft">Draft</Wrapper.MenuItem>
-                  <Wrapper.MenuItem value="Posted">Posted</Wrapper.MenuItem>
-                  <Wrapper.MenuItem value="Void">Void</Wrapper.MenuItem>
-                </Wrapper.Select>
-              </Wrapper.FormControl>
-            </Wrapper.Grid>
-          )}
+          <Wrapper.Grid item xs={12} md={3}>
+            <Wrapper.FormControl fullWidth variant="outlined" size="small">
+              <Wrapper.InputLabel>Voucher Type</Wrapper.InputLabel>
+              <Wrapper.Select
+                value={voucherTypeFilter}
+                onChange={(e) => setVoucherTypeFilter(e.target.value)}
+                label="Voucher Type"
+              >
+                <Wrapper.MenuItem value="">All</Wrapper.MenuItem>
+                <Wrapper.MenuItem value="Payment">Payment</Wrapper.MenuItem>
+                <Wrapper.MenuItem value="Receipt">Receipt</Wrapper.MenuItem>
+              </Wrapper.Select>
+            </Wrapper.FormControl>
+          </Wrapper.Grid>
+          <Wrapper.Grid item xs={12} md={3}>
+            <Wrapper.FormControl fullWidth variant="outlined" size="small">
+              <Wrapper.InputLabel>Status</Wrapper.InputLabel>
+              <Wrapper.Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                label="Status"
+              >
+                <Wrapper.MenuItem value="">All</Wrapper.MenuItem>
+                <Wrapper.MenuItem value="Draft">Draft</Wrapper.MenuItem>
+                <Wrapper.MenuItem value="Posted">Posted</Wrapper.MenuItem>
+              </Wrapper.Select>
+            </Wrapper.FormControl>
+          </Wrapper.Grid>
           <Wrapper.Grid item xs={12} md={3}>
             <Wrapper.FormControl fullWidth variant="outlined" size="small">
               <Wrapper.InputLabel>Rows per page</Wrapper.InputLabel>
@@ -364,39 +326,46 @@ const VoucherList = ({ title, voucherType, createLink }) => {
             <Wrapper.Table sx={{ minWidth: 650 }}>
               <Wrapper.TableHead>
                 <Wrapper.TableRow sx={{ bgcolor: "#f8f9fa" }}>
-                  <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                    {voucherType === "Journal" ? "ID" : "Voucher Number"}
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
+                    Voucher Number
                   </Wrapper.TableCell>
-                  <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                    Date
-                  </Wrapper.TableCell>
-                  {voucherType !== "Journal" && (
-                    <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                      Party
+                  {!isBatch && (
+                    <Wrapper.TableCell
+                      sx={{ fontWeight: 600, textAlign: "center" }}
+                    >
+                      Date
                     </Wrapper.TableCell>
                   )}
-                  <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                    {voucherType === "Journal" ? "Total Debit" : "Total Amount"}
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
+                    Voucher Type
                   </Wrapper.TableCell>
-                  {voucherType !== "Journal" && (
-                    <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                      Payment Method
-                    </Wrapper.TableCell>
-                  )}
-                  <Wrapper.TableCell sx={{ fontWeight: 600 }}>
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
+                    Total Amount
+                  </Wrapper.TableCell>
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
+                    Payment Method
+                  </Wrapper.TableCell>
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
                     Reference
                   </Wrapper.TableCell>
-                  {voucherType === "Journal" && (
-                    <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                      Description
-                    </Wrapper.TableCell>
-                  )}
-                  {voucherType !== "Journal" && (
-                    <Wrapper.TableCell sx={{ fontWeight: 600 }}>
-                      Status
-                    </Wrapper.TableCell>
-                  )}
-                  <Wrapper.TableCell sx={{ fontWeight: 600 }}>
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
+                    Status
+                  </Wrapper.TableCell>
+                  <Wrapper.TableCell
+                    sx={{ fontWeight: 600, textAlign: "center" }}
+                  >
                     Actions
                   </Wrapper.TableCell>
                 </Wrapper.TableRow>
@@ -406,17 +375,14 @@ const VoucherList = ({ title, voucherType, createLink }) => {
                   <VoucherTableRow
                     key={voucher._id}
                     voucher={voucher}
-                    editingId={editingId}
-                    editableVoucher={editableVoucher}
-                    onEditClick={handleEditClick}
-                    onEditChange={handleEditChange}
-                    onSave={handleSaveEdit}
-                    onCancel={handleCancelEdit}
-                    onDelete={handleDeleteClick}
-                    onExpand={handleExpand}
+                    onStatusUpdate={handleStatusUpdate}
+                    onDelete={setId}
+                    onView={handleViewClick}
+                    onPrint={handlePrintClick}
                     expandedId={expandedId}
                     formatNumber={formatNumber}
                     voucherType={voucherType}
+                    isBatch={isBatch}
                   />
                 ))}
               </Wrapper.TableBody>
@@ -452,6 +418,28 @@ const VoucherList = ({ title, voucherType, createLink }) => {
         handleDelete={handleDelete}
         message="Are you sure you want to delete this voucher? This action cannot be undone."
       />
+
+      {/* PrintVoucher Component */}
+      {selectedVoucher && (
+        <PrintVoucher
+          open={printOpen}
+          onClose={() => {
+            setPrintOpen(false);
+            setSelectedVoucher(null);
+          }}
+          transaction={selectedVoucher}
+          transactionType={isBatch ? selectedVoucher?.voucherType : voucherType}
+        />
+      )}
+      {selectedVoucherDetails && (
+        <VoucherDetailsModal
+          open={viewModalOpen}
+          onClose={() => setViewModalOpen(false)}
+          voucher={selectedVoucherDetails}
+          voucherType={voucherType}
+          isBatch={isBatch}
+        />
+      )}
     </Wrapper.Box>
   );
 };

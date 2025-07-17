@@ -1,27 +1,22 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useReactToPrint } from "react-to-print";
 import Wrapper from "../../utils/wrapper";
 import { BASE_URL } from "../../config/config";
-import logo from "../../assets/logo-light.png";
-import {
-  FormField,
-  JournalAccountEntry,
-} from "../../components/SharedComponents";
+import { FormField, JournalAccountEntry } from "../../components/SharedComponents";
+import PrintBill from "../../components/PrintBill"; // Assuming PrintBill is in this path
 
 const JournalEntryForm = () => {
   const navigate = useNavigate();
-  const printRef = useRef();
   const [accountList, setAccountList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isModalOpen, setModalOpen] = useState(false);
+  const [isPrintOpen, setPrintOpen] = useState(false);
   const [voucherDetails, setDetails] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     reference: "",
     description: "",
     accounts: [
-      { accountId: "", debitAmount: "", creditAmount: "" }, // Changed to accountId
+      { accountId: "", debitAmount: "", creditAmount: "" },
       { accountId: "", debitAmount: "", creditAmount: "" },
     ],
   });
@@ -173,41 +168,29 @@ const JournalEntryForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Form submission started");
-
-    if (!validateForm()) {
-      console.log("Form validation failed", errors);
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
     try {
       const submissionData = {
-        voucherType: "Journal",
         date: formData.date,
         reference: formData.reference,
         description: formData.description,
         accounts: formData.accounts.map((acc) => ({
-          account: acc.accountId, // Changed to accountId
+          account: acc.accountId,
           debitAmount: parseNumber(acc.debitAmount),
           creditAmount: parseNumber(acc.creditAmount),
         })),
       };
-      console.log("Submission data:", submissionData);
-
       const response = await Wrapper.axios.post(
         `${BASE_URL}/journalvoucher/add`,
         submissionData
       );
 
-      console.log("API Response:", response);
-
       if (response.data.success) {
-        console.log("Voucher created successfully");
-        Wrapper.toast.success("Journal Voucher created successfully!");
+        Wrapper.toast.success("Journal Entry created successfully!");
         setDetails(response.data.data);
-        setModalOpen(true);
-
+        setPrintOpen(true);
         setFormData({
           date: new Date().toISOString().split("T")[0],
           reference: "",
@@ -222,30 +205,18 @@ const JournalEntryForm = () => {
           creditAmounts: ["", ""],
         });
       } else {
-        console.warn("API returned success:false", response.data);
         Wrapper.toast.error(
           response.data.message || "Failed to create voucher."
         );
       }
     } catch (error) {
-      console.error("Error in handleSubmit:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
       Wrapper.toast.error(
         error.response?.data?.message || "Failed to create voucher."
       );
     } finally {
       setLoading(false);
-      console.log("Form submission completed");
     }
   };
-
-  const handlePrint = useReactToPrint({
-    content: () => printRef.current,
-    onAfterPrint: () => setModalOpen(false),
-  });
 
   return (
     <Wrapper.Box sx={{ p: 4, bgcolor: "#f8f9fa", minHeight: "100vh" }}>
@@ -263,22 +234,22 @@ const JournalEntryForm = () => {
             variant="h4"
             sx={{ fontWeight: 600, color: "#2c3e50" }}
           >
-            Create Journal Voucher
+            Create Journal Entry
           </Wrapper.Typography>
           <Wrapper.Breadcrumbs sx={{ mt: 1 }}>
             <Wrapper.NavLink to="/" color="inherit">
               Dashboard
             </Wrapper.NavLink>
-            <Wrapper.NavLink to="/journalvoucher" color="inherit">
+            <Wrapper.NavLink to="/journal-entry" color="inherit">
               Journal Vouchers
             </Wrapper.NavLink>
             <Wrapper.Typography color="text.primary">Create</Wrapper.Typography>
           </Wrapper.Breadcrumbs>
         </Wrapper.Box>
-        <Wrapper.NavLink to="/journalvoucher">
+        <Wrapper.NavLink to="/journal-entry">
           <Wrapper.Button
             variant="outlined"
-            color="primary"
+            color="inherit"
             startIcon={<Wrapper.ArrowBackIcon />}
             sx={{ textTransform: "none" }}
           >
@@ -370,7 +341,7 @@ const JournalEntryForm = () => {
         </Wrapper.Paper>
 
         <Wrapper.Box
-          sx={{ display: "flex", justifyContent: "flex-end", gap: 2 }}
+          sx={{ display: "flex", justifyContent: "flex-start", gap: 2 }}
         >
           <Wrapper.Button
             type="button"
@@ -384,7 +355,7 @@ const JournalEntryForm = () => {
           <Wrapper.Button
             type="submit"
             variant="contained"
-            color="primary"
+            color="success"
             disabled={loading}
             startIcon={
               loading ? (
@@ -393,176 +364,22 @@ const JournalEntryForm = () => {
                 <Wrapper.SaveIcon />
               )
             }
-            sx={{
-              textTransform: "none",
-              bgcolor: "#2c3e50",
-              "&:hover": { bgcolor: "#1a252f" },
-            }}
           >
-            {loading ? "Processing..." : "Create Voucher"}
+            {loading ? "Processing..." : "Create Entry"}
           </Wrapper.Button>
         </Wrapper.Box>
       </form>
 
-      {/* Print Modal */}
-      <Wrapper.Dialog
-        open={isModalOpen}
-        onClose={() => setModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <Wrapper.DialogTitle
-          sx={{
-            bgcolor: "#2c3e50",
-            color: "white",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Wrapper.Typography variant="h6">
-            Journal Voucher Receipt
-          </Wrapper.Typography>
-          <img src={logo} alt="Logo" style={{ height: "30px" }} />
-        </Wrapper.DialogTitle>
-        <Wrapper.DialogContent dividers>
-          {voucherDetails && (
-            <Wrapper.Box ref={printRef} sx={{ p: 2 }}>
-              <Wrapper.Box
-                sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}
-              >
-                <Wrapper.Box>
-                  <Wrapper.Typography
-                    variant="h6"
-                    sx={{ fontWeight: 600, color: "#2c3e50" }}
-                  >
-                    Journal Voucher
-                  </Wrapper.Typography>
-                  <Wrapper.Typography variant="body2" color="textSecondary">
-                    Transaction Record
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Box sx={{ textAlign: "right" }}>
-                  <Wrapper.Typography variant="body2" color="textSecondary">
-                    <strong>Date:</strong>{" "}
-                    {new Date(voucherDetails.date).toLocaleDateString("en-GB")}
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-              </Wrapper.Box>
-
-              <Wrapper.Paper
-                sx={{ mb: 3, border: "1px solid #e0e0e0", borderRadius: "6px" }}
-              >
-                <Wrapper.Box sx={{ bgcolor: "#f8f9fa", p: 2 }}>
-                  <Wrapper.Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 600, color: "#2c3e50" }}
-                  >
-                    Transaction Details
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Table>
-                  <Wrapper.TableBody>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell sx={{ width: "40%" }}>
-                        <strong>Reference</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        {voucherDetails.reference || "--"}
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell>
-                        <strong>Description</strong>
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        {voucherDetails.description || "--"}
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                  </Wrapper.TableBody>
-                </Wrapper.Table>
-              </Wrapper.Paper>
-
-              <Wrapper.Paper
-                sx={{ mb: 3, border: "1px solid #e0e0e0", borderRadius: "6px" }}
-              >
-                <Wrapper.Box sx={{ bgcolor: "#f8f9fa", p: 2 }}>
-                  <Wrapper.Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 600, color: "#2c3e50" }}
-                  >
-                    Account Entries
-                  </Wrapper.Typography>
-                </Wrapper.Box>
-                <Wrapper.Table>
-                  <Wrapper.TableHead>
-                    <Wrapper.TableRow>
-                      <Wrapper.TableCell>Account</Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        Debit (PKR)
-                      </Wrapper.TableCell>
-                      <Wrapper.TableCell align="right">
-                        Credit (PKR)
-                      </Wrapper.TableCell>
-                    </Wrapper.TableRow>
-                  </Wrapper.TableHead>
-                  <Wrapper.TableBody>
-                    {voucherDetails.accounts.map((acc, index) => (
-                      <Wrapper.TableRow key={index}>
-                        <Wrapper.TableCell>
-                          {accountList.find((a) => a._id === acc.accountId)
-                            ?.name || "--"}
-                        </Wrapper.TableCell>
-                        <Wrapper.TableCell align="right">
-                          {acc.debitAmount
-                            ? formatNumber(acc.debitAmount)
-                            : "--"}
-                        </Wrapper.TableCell>
-                        <Wrapper.TableCell align="right">
-                          {acc.creditAmount
-                            ? formatNumber(acc.creditAmount)
-                            : "--"}
-                        </Wrapper.TableCell>
-                      </Wrapper.TableRow>
-                    ))}
-                  </Wrapper.TableBody>
-                </Wrapper.Table>
-              </Wrapper.Paper>
-
-              <Wrapper.Box sx={{ mt: 4, textAlign: "center" }}>
-                <Wrapper.Typography variant="body2" color="textSecondary">
-                  This is a computer-generated document. No signature is
-                  required.
-                </Wrapper.Typography>
-              </Wrapper.Box>
-            </Wrapper.Box>
-          )}
-        </Wrapper.DialogContent>
-        <Wrapper.DialogActions sx={{ p: 2, justifyContent: "space-between" }}>
-          <Wrapper.Button
-            type="button"
-            onClick={() => setModalOpen(false)}
-            color="inherit"
-            startIcon={<Wrapper.CloseIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            Close
-          </Wrapper.Button>
-          <Wrapper.Button
-            onClick={handlePrint}
-            variant="contained"
-            color="primary"
-            startIcon={<Wrapper.PrintIcon />}
-            sx={{
-              textTransform: "none",
-              bgcolor: "#2c3e50",
-              "&:hover": { bgcolor: "#1a252f" },
-            }}
-          >
-            Print Receipt
-          </Wrapper.Button>
-        </Wrapper.DialogActions>
-      </Wrapper.Dialog>
+      {/* PrintBill Component */}
+      {voucherDetails && (
+        <PrintBill
+          open={isPrintOpen}
+          onClose={() => setPrintOpen(false)}
+          transaction={voucherDetails}
+          transactionType="JournalEntry"
+          accountList={accountList}
+        />
+      )}
     </Wrapper.Box>
   );
 };

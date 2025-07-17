@@ -6,6 +6,7 @@ const ReceiveVoucherList = () => {
       title="Receipt Entries"
       voucherType="Receipt"
       createLink="/receivevoucher/recieveform"
+      createLink="/receipt-entry/form"
     />
   );
 };

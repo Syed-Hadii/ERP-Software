@@ -6,7 +6,8 @@ const { createChartAccount,
     getAccountById,
     updateAccount,
     deleteAccount,
-    getLedgerByCoaId } = require("../../controllers/Finance/chartAccountsController.js");
+    getLedgerByCoaId,
+    getLedgerEntries } = require("../controllers/chartAccountsController.js");
 
 const chartAccountRouter = express.Router()
 
@@ -14,7 +15,7 @@ chartAccountRouter.post('/add', createChartAccount);
 chartAccountRouter.get('/get', getAllAccounts);
 chartAccountRouter.get('/get-cash', getCashAccounts);
 chartAccountRouter.get('/get/:id', getAccountById);
-chartAccountRouter.get('/ledger/:id', getLedgerByCoaId);
+chartAccountRouter.get('/ledger/:id', getLedgerEntries);
 chartAccountRouter.put('/update/:id', updateAccount);
 chartAccountRouter.delete('/delete/:id', deleteAccount);
 

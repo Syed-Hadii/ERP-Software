@@ -7,6 +7,7 @@ const bankAccountSchema = new mongoose.Schema({
   openingBalance: { type: Number, required: true },
   currentBalance: { type: Number, default: 0 },
   chartAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChartAccount', required: true },
+  createdBy: { type: String, default: 'system' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('BankAccount', bankAccountSchema);

@@ -5,7 +5,7 @@ const PaymentVoucherList = () => {
     <VoucherList
       title="Payment Entries"
       voucherType="Payment"
-      createLink="/paymentvoucher/paymentform"
+      createLink="/payment-entry/form"
     />
   );
 };
