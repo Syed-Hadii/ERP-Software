@@ -1,5 +1,6 @@
 {
   "name": "frontend",
+  "homepage": "https://abdul-hadii.com/erp-system",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -26,6 +27,8 @@
     "@mui/x-date-pickers": "^8.6.0",
     "antd": "^5.26.2",
     "axios": "^1.7.7",
+    "baseline-browser-mapping": "^2.10.16",
+    "caniuse-lite": "^1.0.30001786",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.11.8",
     "frontend": "file:",

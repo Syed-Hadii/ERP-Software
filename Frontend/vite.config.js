@@ -5,7 +5,7 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: './', // Set base path to relative
+  base: '/erp-system',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

@@ -62,7 +62,7 @@ import BatchEntryForm from "./pages/Finance/BatchEntryFormPage";
 
 const App = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/erp-system">
       <Suspense fallback={<Loading />}>
         <Routes>
           {/* Default route redirects to welcome */}

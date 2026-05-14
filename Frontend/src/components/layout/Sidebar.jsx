@@ -521,11 +521,12 @@ const Sidebar = ({ isOpen, userRole, isMobile }) => {
       {(!isMobile || isOpen) && (
         <SidebarHeader>
           <LogoBox sx={{ display: isOpen || !isMobile ? "flex" : "none" }}>
+          
             <img width={40} src={logo} alt="" />
           </LogoBox>
           {isOpen && (
             <Wrapper.Typography variant="subtitle1" fontWeight="bold" noWrap>
-              Zahirix Pvt Limited
+              Saas Erp System
             </Wrapper.Typography>
           )}
         </SidebarHeader>

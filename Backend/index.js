@@ -1,3 +1,6 @@
+// DNS setup for MongoDB Atlas on Windows
+require('./dns-setup.js');
+
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -82,78 +85,78 @@ app.use(cors({ origin: "*" }));
 })();
 
 // Routes
-app.use("/dashboard", dashboardRouter);
-app.use("/user", userRouter);
+app.use("/erp-system/backend/dashboard", dashboardRouter);
+app.use("/erp-system/backend/user", userRouter);
 // agriculture routes
-app.use("/agriculture-dashboard", agricultureDashboardRouter);
-app.use("/land", landRouter);
-app.use("/farmer", farmerRouter);
-app.use("/crop", cropRouter);
-app.use("/agro-inventory", agroInventoryRouter);
-app.use("/schedule", scheduleRouter);
-app.use("/cropSow", cropSowRouter);
+app.use("/erp-system/backend/agriculture-dashboard", agricultureDashboardRouter);
+app.use("/erp-system/backend/land", landRouter);
+app.use("/erp-system/backend/farmer", farmerRouter);
+app.use("/erp-system/backend/crop", cropRouter);
+app.use("/erp-system/backend/agro-inventory", agroInventoryRouter);
+app.use("/erp-system/backend/schedule", scheduleRouter);
+app.use("/erp-system/backend/cropSow", cropSowRouter);
 // cattle routes 
-app.use("/cattle-dashboard", cattleDashboardRouter);
-app.use("/cattle", cattleRegRouter);
-app.use("/health", healthRouter);
-app.use("/cattle-outgoing", exitEventsRouter);
-app.use("/milk-production", milkRouter);
-app.use("/dairy-product", dairyProductRouter);
-app.use("/dairy-process", dairyProcessRouter);
-app.use("/feed-process", feedProcessRouter);
-app.use("/feed-usage", feedUsageRouter);
-app.use("/dairy-inventory", dairyInventoryRouter);
-app.use("/dairy-sale", dairySaleRouter);
+app.use("/erp-system/backend/cattle-dashboard", cattleDashboardRouter);
+app.use("/erp-system/backend/cattle", cattleRegRouter);
+app.use("/erp-system/backend/health", healthRouter);
+app.use("/erp-system/backend/cattle-outgoing", exitEventsRouter);
+app.use("/erp-system/backend/milk-production", milkRouter);
+app.use("/erp-system/backend/dairy-product", dairyProductRouter);
+app.use("/erp-system/backend/dairy-process", dairyProcessRouter);
+app.use("/erp-system/backend/feed-process", feedProcessRouter);
+app.use("/erp-system/backend/feed-usage", feedUsageRouter);
+app.use("/erp-system/backend/dairy-inventory", dairyInventoryRouter);
+app.use("/erp-system/backend/dairy-sale", dairySaleRouter);
 // Inventory routes
-app.use("/supplier", supplierRouter);
-app.use("/inventory-dashboard", inventoryDashboardRouter);
-app.use("/customer", customerRouter);
-app.use("/invoice-approval", InvoiceApprovalRouter);
-app.use("/inventory", inventoryRouter);
-app.use("/purchase", purchaseInvoiceRouter);
-app.use("/items", itemRoter);
-app.use("/inventoryRequest", RequestRouter);
-app.use("/stockconsume", stockConsumeRouter);
-app.use("/inventory-write-off", InventoryWriteOffRouter);
+app.use("/erp-system/backend/supplier", supplierRouter);
+app.use("/erp-system/backend/inventory-dashboard", inventoryDashboardRouter);
+app.use("/erp-system/backend/customer", customerRouter);
+app.use("/erp-system/backend/invoice-approval", InvoiceApprovalRouter);
+app.use("/erp-system/backend/inventory", inventoryRouter);
+app.use("/erp-system/backend/purchase", purchaseInvoiceRouter);
+app.use("/erp-system/backend/items", itemRoter);
+app.use("/erp-system/backend/inventoryRequest", RequestRouter);
+app.use("/erp-system/backend/stockconsume", stockConsumeRouter);
+app.use("/erp-system/backend/inventory-write-off", InventoryWriteOffRouter);
 // HR routes
-app.use("/employees", employeeRouter);
-app.use("/analytic", analyticRouter);
-app.use("/increment", incrementRouter);
-app.use("/attendance", attendanceRouter);
-app.use("/payroll", payrollRouter);
-app.use("/payroll", payrollRequestRouter);
-app.use("/loan", loanRouter);
+app.use("/erp-system/backend/employees", employeeRouter);
+app.use("/erp-system/backend/analytic", analyticRouter);
+app.use("/erp-system/backend/increment", incrementRouter);
+app.use("/erp-system/backend/attendance", attendanceRouter);
+app.use("/erp-system/backend/payroll", payrollRouter);
+app.use("/erp-system/backend/payroll", payrollRequestRouter);
+app.use("/erp-system/backend/loan", loanRouter);
 // Finance routes
-app.use("/bank", bankRouter);
-app.use("/finance-dashboard", financeDashboardRouter);
-app.use("/chartaccount", chartAccountRouter);
-app.use("/transaction-entry", transactionEntryRouter);
-app.use("/batch-entry", batchEntryRouter);
-app.use("/journalvoucher", journalVoucherRouter);
-app.use("/closePeriod", closingRouter);
-app.use("/reminder", reminderRouter);
+app.use("/erp-system/backend/bank", bankRouter);
+app.use("/erp-system/backend/finance-dashboard", financeDashboardRouter);
+app.use("/erp-system/backend/chartaccount", chartAccountRouter);
+app.use("/erp-system/backend/transaction-entry", transactionEntryRouter);
+app.use("/erp-system/backend/batch-entry", batchEntryRouter);
+app.use("/erp-system/backend/journalvoucher", journalVoucherRouter);
+app.use("/erp-system/backend/closePeriod", closingRouter);
+app.use("/erp-system/backend/reminder", reminderRouter);
 
 // Notification routes
-app.use('/notifications', notificationRouter);
-app.use('/agriculture-notifications', agricultureNotificationRouter);
-app.use('/cattle-notifications', cattleNotificationRouter);
-app.use('/inventory-notifications', inventoryNotificationRouter);
-app.use('/hr-notifications', hrNotificationRouter);
-app.use('/finance-notifications', financeNotificationRouter);
+app.use('/erp-system/backend/notifications', notificationRouter);
+app.use('/erp-system/backend/agriculture-notifications', agricultureNotificationRouter);
+app.use('/erp-system/backend/cattle-notifications', cattleNotificationRouter);
+app.use('/erp-system/backend/inventory-notifications', inventoryNotificationRouter);
+app.use('/erp-system/backend/hr-notifications', hrNotificationRouter);
+app.use('/erp-system/backend/finance-notifications', financeNotificationRouter);
 
 // Root route
-app.get("/", (req, res) => {
+app.get("/erp-system/backend/", (req, res) => {
   res.json({
     message: "Farm Management Dashboard API",
     version: "1.0.0",
     endpoints: {
-      notifications: "/notifications",
-      agricultureNotifications: "/agriculture-notifications",
-      cattleNotifications: "/cattle-notifications",
-      inventoryNotifications: "/inventory-notifications",
-      hrNotifications: "/hr-notifications",
-      financeNotifications: "/finance-notifications",
-      manualTrigger: "/notifications/all"
+      notifications: "/erp-system/backend/notifications",
+      agricultureNotifications: "/erp-system/backend/agriculture-notifications",
+      cattleNotifications: "/erp-system/backend/cattle-notifications",
+      inventoryNotifications: "/erp-system/backend/inventory-notifications",
+      hrNotifications: "/erp-system/backend/hr-notifications",
+      financeNotifications: "/erp-system/backend/finance-notifications",
+      manualTrigger: "/erp-system/backend/notifications/all"
     }
   });
 });

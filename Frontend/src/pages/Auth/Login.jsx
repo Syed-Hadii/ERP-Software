@@ -22,8 +22,8 @@ import "tailwindcss/tailwind.css";
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@admin.com");
+  const [password, setPassword] = useState("123456");
   const [error, setError] = useState("");
   const navigate = Wrapper.useNavigate();
   const location = Wrapper.useLocation();
@@ -99,7 +99,7 @@ const Login = () => {
           <Box className="absolute bottom-20 right-20 w-56 h-56 bg-green-300/10 rounded-full blur-3xl"></Box>
 
           <Box className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-center text-white">
-            <Wrapper.motion.div
+            {/* <Wrapper.motion.div
               variants={logoVariants}
               initial="hidden"
               animate="visible"
@@ -110,7 +110,7 @@ const Login = () => {
                 alt="ZAHIRIX"
                 className="w-52 h-auto mx-auto drop-shadow-xl"
               />
-            </Wrapper.motion.div>
+            </Wrapper.motion.div> */}
 
             <Wrapper.motion.div
               variants={itemVariants}
@@ -122,7 +122,7 @@ const Login = () => {
                 variant="h2"
                 className="font-extrabold leading-tight tracking-tight"
               >
-                Sign in to ZAHIRIX
+                Sign in to ERP System
               </Typography>
               <Typography
                 variant="body1"
@@ -149,12 +149,13 @@ const Login = () => {
                 className="w-full"
               >
                 {/* Mobile Logo */}
-                <Box className="lg:hidden text-center mb-8">
-                  <img
+                <Box className="lg:hidden text-center mb-8 h-36 flex items-center justify-center font-bold text-xl">
+                  SAAS ERP SYSTEM 
+                  {/* <img
                     src={Logo}
                     alt="ZAHIRIX"
                     className="w-36 h-auto mx-auto mb-4"
-                  />
+                  /> */}
                 </Box>
 
                 <Wrapper.motion.div variants={itemVariants}>
@@ -309,7 +310,7 @@ const Login = () => {
                       variant="caption"
                       className="text-gray-400 text-xs"
                     >
-                      © 2024 ZAHIRIX PVT LIMITED. All rights reserved.
+                      © 2024 Abdul Hadi. All rights reserved.
                     </Typography>
                   </Box>
                 </Wrapper.motion.div>
